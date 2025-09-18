@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">MedScan</string>
+    <string name="detection">DETECTAR</string>
+</resources>
