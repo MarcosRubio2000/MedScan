@@ -4,8 +4,9 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.speech.tts.TextToSpeech
 import android.util.Log
-import android.widget.Toast
+import android.util.Size
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
@@ -17,25 +18,30 @@ import androidx.core.content.ContextCompat
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
-import com.google.mlkit.vision.text.Text
 import com.medscan.medscan.databinding.ActivityMainBinding
+import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
-import android.util.Size
+
 val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
 
 @androidx.camera.core.ExperimentalGetImage
-class MainActivity : AppCompatActivity() {
+class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
     private lateinit var viewBinding: ActivityMainBinding
     private lateinit var cameraExecutor: ExecutorService
     private var imageAnalysis: ImageAnalysis? = null
     private var latestImageProxy: ImageProxy? = null   // guardamos el último frame
 
+    private lateinit var tts: TextToSpeech
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         viewBinding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(viewBinding.root)
+
+        // Inicializar TTS
+        tts = TextToSpeech(this, this)
 
         // Pedir permisos
         if (allPermissionsGranted()) {
@@ -74,7 +80,10 @@ class MainActivity : AppCompatActivity() {
                         latestImageProxy?.close()
                         latestImageProxy = imageProxy
 
-                        Log.d(TAG, "Nuevo frame recibido: ${imageProxy.width}x${imageProxy.height}, rotación=${imageProxy.imageInfo.rotationDegrees}")
+                        Log.d(
+                            TAG,
+                            "Nuevo frame recibido: ${imageProxy.width}x${imageProxy.height}, rotación=${imageProxy.imageInfo.rotationDegrees}"
+                        )
                     }
                 }
 
@@ -93,7 +102,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun detectTextFromLatestFrame() {
         val imageProxy = latestImageProxy ?: return
-        latestImageProxy = null // lo consumo ya mismo
+        latestImageProxy = null // limpiar para que no se use de nuevo
 
         val mediaImage = imageProxy.image
         if (mediaImage != null) {
@@ -102,19 +111,43 @@ class MainActivity : AppCompatActivity() {
 
             recognizer.process(inputImage)
                 .addOnSuccessListener { visionText ->
-                    Log.d(TAG, "Texto detectado: ${visionText.text}")
+                    val detectedText = visionText.text
+                    Log.d(TAG, "Texto detectado: $detectedText")
+
+                    if (detectedText.isNotEmpty()) {
+                        speak(detectedText)  // TTS en el mismo momento
+                    } else {
+                        speak("No se detectó texto")
+                    }
                 }
                 .addOnFailureListener { e ->
                     Log.e(TAG, "Error en OCR", e)
+                    speak("Ocurrió un error al detectar el texto")
                 }
                 .addOnCompleteListener {
-                    imageProxy.close()
+                    imageProxy.close()  // cerrar el frame recién analizado
                 }
         } else {
             imageProxy.close()
         }
     }
 
+    // Inicialización de TTS
+    override fun onInit(status: Int) {
+        if (status == TextToSpeech.SUCCESS) {
+            val result = tts.setLanguage(Locale("es", "ES"))
+            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                Log.e("TTS", "Idioma no soportado")
+            }
+        } else {
+            Log.e("TTS", "Inicialización fallida")
+        }
+    }
+
+    // Función para hablar
+    private fun speak(text: String) {
+        tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, null)
+    }
 
     private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {
         ContextCompat.checkSelfPermission(
@@ -125,6 +158,10 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         cameraExecutor.shutdown()
+        if (::tts.isInitialized) {
+            tts.stop()
+            tts.shutdown()
+        }
     }
 
     companion object {
