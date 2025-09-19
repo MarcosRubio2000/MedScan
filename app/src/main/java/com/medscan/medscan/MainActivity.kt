@@ -105,11 +105,12 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                     val detectedText = visionText.text
                     Log.d(TAG, "Texto detectado: $detectedText")
 
-                    val bestMatch = dbHelper.findClosestMedicine(detectedText)
+                    val matches = dbHelper.findMedicines(detectedText)
 
-                    if (bestMatch != null) {
-                        viewBinding.textView.text = bestMatch
-                        speakOut(bestMatch)
+                    if (matches.isNotEmpty()) {
+                        val result = matches.joinToString(", ")
+                        viewBinding.textView.text = result
+                        speakOut(result)
                     } else {
                         viewBinding.textView.text = "No se encontró coincidencia"
                         speakOut("Intente nuevamente")
@@ -127,6 +128,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             imageProxy.close()
         }
     }
+
 
     private fun speakOut(text: String) {
         tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, null)

@@ -36,29 +36,32 @@ class MedicineDatabaseHelper(context: Context) {
             .trim()
     }
 
-    fun findClosestMedicine(detectedText: String): String? {
+    /**
+     * Busca múltiples coincidencias dentro del texto detectado.
+     * Devuelve todos los medicamentos que estén presentes o sean muy parecidos.
+     */
+    fun findMedicines(detectedText: String): List<String> {
         val normalizedDetected = normalizeText(detectedText)
 
-        var bestMatch: String? = null
-        var bestScore = 0.0
+        val matches = mutableListOf<String>()
 
         for (medicine in medicineList) {
             val normalizedMedicine = normalizeText(medicine)
 
-            // Match directo
+            // Coincidencia directa
             if (normalizedDetected.contains(normalizedMedicine)) {
-                return medicine
+                matches.add(medicine)
+                continue
             }
 
-            // Comparar similitud
+            // Coincidencia aproximada
             val score = similarity(normalizedDetected, normalizedMedicine)
-            if (score > bestScore) {
-                bestScore = score
-                bestMatch = medicine
+            if (score > 0.7) { // umbral para evitar falsos positivos
+                matches.add(medicine)
             }
         }
 
-        return if (bestScore > 0.65) bestMatch else null // subí el umbral un poquito
+        return matches.distinct()
     }
 
     private fun similarity(s1: String, s2: String): Double {
