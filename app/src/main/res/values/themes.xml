@@ -7,5 +7,11 @@
 
     </style>
 
+    <style name="SplashTheme" parent="Theme.MedScan">
+        <item name="android:windowBackground">@drawable/splash_background</item>
+    </style>
+
+
+
     <style name="Theme.MedScan" parent="Base.Theme.MedScan" />
 </resources>

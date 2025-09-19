@@ -6,4 +6,9 @@
         <item name="android:windowFullscreen">true</item>
 
     </style>
+
+    <style name="SplashTheme" parent="Theme.MedScan">
+        <item name="android:windowBackground">@drawable/splash_background</item>
+    </style>
+
 </resources>

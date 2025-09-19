@@ -1,0 +1,27 @@
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#407BFF">
+
+    <ImageView
+        android:id="@+id/logo"
+        android:layout_width="400dp"
+        android:layout_height="400dp"
+        android:src="@drawable/ic_medscan4"
+        android:layout_centerHorizontal="true"
+        android:layout_centerVertical="true"
+        android:layout_marginBottom="40dp"/> <!-- sube un poco la imagen -->
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Desarrollado por Marcos Rubio y Daniela Araujo"
+        android:textStyle="bold"
+        android:textColor="@android:color/white"
+        android:fontFamily="@font/fuentemedscan"
+        android:textSize="12sp"
+        android:layout_below="@id/logo"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="60dp"/> <!-- baja un poco el texto -->
+
+</RelativeLayout>
