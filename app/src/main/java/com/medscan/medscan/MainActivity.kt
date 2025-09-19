@@ -27,6 +27,7 @@ import java.util.Locale
 
 val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
 
+
 @ExperimentalGetImage
 class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
@@ -36,6 +37,21 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
     private lateinit var tts: TextToSpeech
     private lateinit var dbHelper: MedicineDatabaseHelper
+
+    @Suppress("DEPRECATION")
+    private fun vibratePhone() {
+        val vibrator = getSystemService(VIBRATOR_SERVICE) as android.os.Vibrator
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator.vibrate(
+                android.os.VibrationEffect.createOneShot(
+                    150,  // duración en ms
+                    android.os.VibrationEffect.DEFAULT_AMPLITUDE
+                )
+            )
+        } else {
+            vibrator.vibrate(150) // para versiones viejas
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -64,6 +80,28 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         }
 
         cameraExecutor = Executors.newSingleThreadExecutor()
+
+        // Botón Detectar
+        viewBinding.detectionButton.setOnClickListener {
+            vibratePhone() // ✅ vibración
+            imageAnalysis?.setAnalyzer(cameraExecutor) { imageProxy ->
+                processImage(imageProxy)
+                imageAnalysis?.clearAnalyzer() // solo 1 frame
+            }
+        }
+
+        // Botón Linterna
+        viewBinding.flashButton.setOnClickListener {
+            vibratePhone() // ✅ vibración
+            // después implementamos toggle de linterna
+        }
+
+        // Botón Configuración
+        viewBinding.settingsButton.setOnClickListener {
+            vibratePhone() // ✅ vibración
+            // aquí abrirías otra Activity o un menú
+        }
+
     }
 
     private fun startCamera() {
