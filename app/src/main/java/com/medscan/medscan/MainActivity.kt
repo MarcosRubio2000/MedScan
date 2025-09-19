@@ -118,15 +118,18 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                     if (results.isNotEmpty()) {
                         val resultText = results.joinToString("\n")
                         viewBinding.textView.text = resultText
+                        viewBinding.ttsIcon.setImageResource(R.drawable.ic_tts_verde) // ✅ icono verde
                         speakOut(resultText)
                     } else {
                         viewBinding.textView.text = "No se encontró coincidencia"
+                        viewBinding.ttsIcon.setImageResource(R.drawable.ic_tts_rojo) // ❌ icono rojo
                         speakOut("Intente nuevamente")
                     }
                 }
                 .addOnFailureListener { e ->
                     Log.e(TAG, "Error en OCR", e)
                     viewBinding.textView.text = "Error al detectar texto"
+                    viewBinding.ttsIcon.setImageResource(R.drawable.ic_tts_rojo) // ❌ icono rojo también en error
                     speakOut("Error al detectar texto")
                 }
                 .addOnCompleteListener {
