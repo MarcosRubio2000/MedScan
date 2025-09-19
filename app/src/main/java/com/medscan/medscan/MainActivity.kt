@@ -14,6 +14,7 @@ import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
+import androidx.camera.core.TorchState
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -27,14 +28,13 @@ import java.util.Locale
 
 val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
 
-
 @ExperimentalGetImage
 class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
     private lateinit var viewBinding: ActivityMainBinding
     private lateinit var cameraExecutor: ExecutorService
     private var imageAnalysis: ImageAnalysis? = null
-
+    private var camera: androidx.camera.core.Camera? = null
     private lateinit var tts: TextToSpeech
     private lateinit var dbHelper: MedicineDatabaseHelper
 
@@ -44,12 +44,12 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             vibrator.vibrate(
                 android.os.VibrationEffect.createOneShot(
-                    150,  // duración en ms
+                    150,
                     android.os.VibrationEffect.DEFAULT_AMPLITUDE
                 )
             )
         } else {
-            vibrator.vibrate(150) // para versiones viejas
+            vibrator.vibrate(150)
         }
     }
 
@@ -71,37 +71,41 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             )
         }
 
-        // Botón Detectar → analiza un único frame
-        viewBinding.detectionButton.setOnClickListener {
-            imageAnalysis?.setAnalyzer(cameraExecutor) { imageProxy ->
-                processImage(imageProxy)
-                imageAnalysis?.clearAnalyzer() // 🔑 solo analiza 1 frame
-            }
-        }
-
         cameraExecutor = Executors.newSingleThreadExecutor()
 
         // Botón Detectar
         viewBinding.detectionButton.setOnClickListener {
-            vibratePhone() // ✅ vibración
+            vibratePhone()
             imageAnalysis?.setAnalyzer(cameraExecutor) { imageProxy ->
                 processImage(imageProxy)
-                imageAnalysis?.clearAnalyzer() // solo 1 frame
+                imageAnalysis?.clearAnalyzer()
             }
         }
 
         // Botón Linterna
         viewBinding.flashButton.setOnClickListener {
-            vibratePhone() // ✅ vibración
-            // después implementamos toggle de linterna
+            vibratePhone()
+            camera?.let { cam ->
+                if (cam.cameraInfo.hasFlashUnit()) {
+                    val torchState = cam.cameraInfo.torchState.value
+                    cam.cameraControl.enableTorch(torchState != TorchState.ON)
+
+                    if (torchState == TorchState.ON) {
+                        viewBinding.flashButton.setImageResource(R.drawable.ic_lantern_off)
+                    } else {
+                        viewBinding.flashButton.setImageResource(R.drawable.ic_lantern_on)
+                    }
+                } else {
+                    Toast.makeText(this, "El dispositivo no tiene linterna", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
 
         // Botón Configuración
         viewBinding.settingsButton.setOnClickListener {
-            vibratePhone() // ✅ vibración
+            vibratePhone()
             // aquí abrirías otra Activity o un menú
         }
-
     }
 
     private fun startCamera() {
@@ -123,7 +127,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
             try {
                 cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(
+                camera = cameraProvider.bindToLifecycle(
                     this, cameraSelector, preview, imageAnalysis
                 )
             } catch (exc: Exception) {
@@ -142,7 +146,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 .addOnSuccessListener { visionText ->
                     val results = mutableListOf<String>()
 
-                    // Recorremos bloques y líneas de texto
                     for (block in visionText.textBlocks) {
                         for (line in block.lines) {
                             val lineText = line.text
@@ -156,18 +159,18 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                     if (results.isNotEmpty()) {
                         val resultText = results.joinToString("\n")
                         viewBinding.textView.text = resultText
-                        viewBinding.ttsIcon.setImageResource(R.drawable.ic_tts_verde) // ✅ icono verde
+                        viewBinding.ttsIcon.setImageResource(R.drawable.ic_tts_verde)
                         speakOut(resultText)
                     } else {
                         viewBinding.textView.text = "No se encontró coincidencia"
-                        viewBinding.ttsIcon.setImageResource(R.drawable.ic_tts_rojo) // ❌ icono rojo
+                        viewBinding.ttsIcon.setImageResource(R.drawable.ic_tts_rojo)
                         speakOut("Intente nuevamente")
                     }
                 }
                 .addOnFailureListener { e ->
                     Log.e(TAG, "Error en OCR", e)
                     viewBinding.textView.text = "Error al detectar texto"
-                    viewBinding.ttsIcon.setImageResource(R.drawable.ic_tts_rojo) // ❌ icono rojo también en error
+                    viewBinding.ttsIcon.setImageResource(R.drawable.ic_tts_rojo)
                     speakOut("Error al detectar texto")
                 }
                 .addOnCompleteListener {
@@ -179,9 +182,9 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         }
     }
 
-
     private fun speakOut(text: String) {
-        tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, null)
+        val params = Bundle()
+        tts.speak(text, TextToSpeech.QUEUE_FLUSH, params, "UTTERANCE_ID")
     }
 
     private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {
@@ -210,6 +213,24 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
                 Log.e(TAG, "Idioma no soportado")
             }
+
+            // 🔑 Listener para volver a ic_tts al terminar
+            tts.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
+                override fun onStart(utteranceId: String?) {}
+
+                override fun onDone(utteranceId: String?) {
+                    runOnUiThread {
+                        viewBinding.ttsIcon.setImageResource(R.drawable.ic_tts)
+                    }
+                }
+
+                override fun onError(utteranceId: String?) {
+                    runOnUiThread {
+                        viewBinding.ttsIcon.setImageResource(R.drawable.ic_tts)
+                    }
+                }
+            })
+
         } else {
             Log.e(TAG, "Error al inicializar TTS")
         }
@@ -237,4 +258,3 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             }.toTypedArray()
     }
 }
-

@@ -44,7 +44,7 @@
             android:layout_width="0dp"
             android:layout_height="0dp"
             android:src="@drawable/ic_tts"
-            android:alpha="0.4"
+            android:alpha="0.6"
             android:contentDescription="Ícono Centrado"
             android:scaleType="fitCenter"
             android:padding="10dp"
