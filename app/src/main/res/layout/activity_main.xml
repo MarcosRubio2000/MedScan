@@ -13,6 +13,7 @@
 
     </androidx.camera.view.PreviewView>
 
+
     <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
         android:layout_height="130dp"
@@ -24,7 +25,6 @@
             android:id="@+id/flashButton"
             android:layout_width="0dp"
             android:layout_height="0dp"
-            android:background="@drawable/buttons_transparent_background"
             android:src="@drawable/ic_lantern_off"
             android:contentDescription="Linterna"
             android:alpha="0.8"
@@ -35,7 +35,8 @@
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintWidth_percent="0.32"
             app:layout_constraintDimensionRatio="1:1"
-            android:layout_marginEnd="10dp"/>
+            android:layout_marginEnd="10dp"
+            android:background="@drawable/ripple_round_button" />
 
         <!-- Icono central -->
         <ImageView
@@ -59,7 +60,6 @@
             android:id="@+id/settingsButton"
             android:layout_width="0dp"
             android:layout_height="0dp"
-            android:background="@drawable/buttons_transparent_background"
             android:src="@drawable/ic_settings"
             android:contentDescription="Configuraciones"
             android:alpha="0.8"
@@ -70,7 +70,8 @@
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintWidth_percent="0.32"
             app:layout_constraintDimensionRatio="1:1"
-            android:layout_marginStart="10dp" />
+            android:layout_marginStart="10dp"
+            android:background="@drawable/ripple_round_button" />
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 
@@ -80,10 +81,11 @@
         android:layout_height="wrap_content"
         android:background="#10DDDDDD"
         android:padding="10dp"
-        android:text="Texto detectado aparecerá aquí"
+        android:text="Por favor, escanee su medicamento"
         android:textSize="20sp"
         android:textColor="#757575"
         android:textStyle="bold"
+        android:gravity="center"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
