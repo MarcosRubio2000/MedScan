@@ -4,7 +4,7 @@ import android.content.Context
 import org.json.JSONArray
 import java.io.BufferedReader
 import java.io.InputStreamReader
-import kotlin.math.max
+import java.text.Normalizer
 
 class MedicineDatabaseHelper(context: Context) {
 
@@ -21,23 +21,21 @@ class MedicineDatabaseHelper(context: Context) {
         for (i in 0 until jsonArray.length()) {
             tempList.add(jsonArray.getString(i))
         }
-        medicineList = tempList
+        medicineList = tempList.distinct() // evita duplicados
     }
 
     /**
-     * Normaliza un texto: lo pasa a minúsculas, quita acentos y caracteres especiales.
+     * Normaliza un texto: minúsculas, sin acentos ni caracteres especiales.
      */
     private fun normalizeText(text: String): String {
-        return text
+        val temp = Normalizer.normalize(text, Normalizer.Form.NFD)
+        return temp
+            .replace("\\p{Mn}+".toRegex(), "")   // quita acentos
             .lowercase()
             .replace("[^a-z0-9 ]".toRegex(), "") // elimina símbolos y signos
             .trim()
     }
 
-    /**
-     * Busca el medicamento más cercano dentro de la lista cargada desde el JSON.
-     * Usa coincidencia directa o similitud si no hay match exacto.
-     */
     fun findClosestMedicine(detectedText: String): String? {
         val normalizedDetected = normalizeText(detectedText)
 
@@ -47,7 +45,7 @@ class MedicineDatabaseHelper(context: Context) {
         for (medicine in medicineList) {
             val normalizedMedicine = normalizeText(medicine)
 
-            // Si el texto detectado contiene directamente el nombre del medicamento
+            // Match directo
             if (normalizedDetected.contains(normalizedMedicine)) {
                 return medicine
             }
@@ -60,26 +58,17 @@ class MedicineDatabaseHelper(context: Context) {
             }
         }
 
-        // Retorna el más cercano solo si supera un umbral razonable
-        return if (bestScore > 0.6) bestMatch else null
+        return if (bestScore > 0.65) bestMatch else null // subí el umbral un poquito
     }
 
-    /**
-     * Calcula la similitud entre dos cadenas usando Longest Common Subsequence (LCS).
-     */
     private fun similarity(s1: String, s2: String): Double {
         val longer = if (s1.length > s2.length) s1 else s2
         val shorter = if (s1.length > s2.length) s2 else s1
-
         val longerLength = longer.length
         if (longerLength == 0) return 1.0
-
         return (longerLength - editDistance(longer, shorter)) / longerLength.toDouble()
     }
 
-    /**
-     * Distancia de edición (Levenshtein).
-     */
     private fun editDistance(s1: String, s2: String): Int {
         val costs = IntArray(s2.length + 1) { it }
         for (i in 1..s1.length) {

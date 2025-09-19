@@ -33,7 +33,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private lateinit var viewBinding: ActivityMainBinding
     private lateinit var cameraExecutor: ExecutorService
     private var imageAnalysis: ImageAnalysis? = null
-    private var latestImageProxy: ImageProxy? = null
 
     private lateinit var tts: TextToSpeech
     private lateinit var dbHelper: MedicineDatabaseHelper
@@ -56,9 +55,12 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             )
         }
 
-        // Botón Detectar → dispara OCR con el último frame disponible
+        // Botón Detectar → analiza un único frame
         viewBinding.detectionButton.setOnClickListener {
-            detectTextFromLatestFrame()
+            imageAnalysis?.setAnalyzer(cameraExecutor) { imageProxy ->
+                processImage(imageProxy)
+                imageAnalysis?.clearAnalyzer() // 🔑 solo analiza 1 frame
+            }
         }
 
         cameraExecutor = Executors.newSingleThreadExecutor()
@@ -78,15 +80,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 .setTargetResolution(Size(1280, 720))
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                 .build()
-                .also {
-                    it.setAnalyzer(cameraExecutor) { imageProxy ->
-                        // guardamos siempre el último frame
-                        latestImageProxy?.close()
-                        latestImageProxy = imageProxy
-
-                        Log.d(TAG, "Nuevo frame recibido: ${imageProxy.width}x${imageProxy.height}, rotación=${imageProxy.imageInfo.rotationDegrees}")
-                    }
-                }
 
             val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
 
@@ -101,10 +94,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         }, ContextCompat.getMainExecutor(this))
     }
 
-    private fun detectTextFromLatestFrame() {
-        val imageProxy = latestImageProxy ?: return
-        latestImageProxy = null // lo consumo ya mismo
-
+    private fun processImage(imageProxy: ImageProxy) {
         val mediaImage = imageProxy.image
         if (mediaImage != null) {
             val rotation = imageProxy.imageInfo.rotationDegrees
@@ -118,7 +108,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                     val bestMatch = dbHelper.findClosestMedicine(detectedText)
 
                     if (bestMatch != null) {
-                        // 👇 Mostrar solo la coincidencia en pantalla
                         viewBinding.textView.text = bestMatch
                         speakOut(bestMatch)
                     } else {
@@ -196,3 +185,4 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             }.toTypedArray()
     }
 }
+
