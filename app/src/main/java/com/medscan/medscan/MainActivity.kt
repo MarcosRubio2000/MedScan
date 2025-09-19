@@ -7,8 +7,10 @@ import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.util.Log
 import android.util.Size
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
@@ -19,28 +21,30 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.medscan.medscan.databinding.ActivityMainBinding
-import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.Locale
 
 val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
 
-@androidx.camera.core.ExperimentalGetImage
+@ExperimentalGetImage
 class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
     private lateinit var viewBinding: ActivityMainBinding
     private lateinit var cameraExecutor: ExecutorService
     private var imageAnalysis: ImageAnalysis? = null
-    private var latestImageProxy: ImageProxy? = null   // guardamos el último frame
+    private var latestImageProxy: ImageProxy? = null
 
     private lateinit var tts: TextToSpeech
+    private lateinit var dbHelper: MedicineDatabaseHelper
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         viewBinding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(viewBinding.root)
 
-        // Inicializar TTS
+        // Inicializar DB y TTS
+        dbHelper = MedicineDatabaseHelper(this)
         tts = TextToSpeech(this, this)
 
         // Pedir permisos
@@ -80,10 +84,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                         latestImageProxy?.close()
                         latestImageProxy = imageProxy
 
-                        Log.d(
-                            TAG,
-                            "Nuevo frame recibido: ${imageProxy.width}x${imageProxy.height}, rotación=${imageProxy.imageInfo.rotationDegrees}"
-                        )
+                        Log.d(TAG, "Nuevo frame recibido: ${imageProxy.width}x${imageProxy.height}, rotación=${imageProxy.imageInfo.rotationDegrees}")
                     }
                 }
 
@@ -102,7 +103,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
     private fun detectTextFromLatestFrame() {
         val imageProxy = latestImageProxy ?: return
-        latestImageProxy = null // limpiar para que no se use de nuevo
+        latestImageProxy = null // lo consumo ya mismo
 
         val mediaImage = imageProxy.image
         if (mediaImage != null) {
@@ -114,38 +115,31 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                     val detectedText = visionText.text
                     Log.d(TAG, "Texto detectado: $detectedText")
 
-                    if (detectedText.isNotEmpty()) {
-                        speak(detectedText)  // TTS en el mismo momento
+                    val bestMatch = dbHelper.findClosestMedicine(detectedText)
+
+                    if (bestMatch != null) {
+                        // 👇 Mostrar solo la coincidencia en pantalla
+                        viewBinding.textView.text = bestMatch
+                        speakOut(bestMatch)
                     } else {
-                        speak("No se detectó texto")
+                        viewBinding.textView.text = "No se encontró coincidencia"
+                        speakOut("Intente nuevamente")
                     }
                 }
                 .addOnFailureListener { e ->
                     Log.e(TAG, "Error en OCR", e)
-                    speak("Ocurrió un error al detectar el texto")
+                    viewBinding.textView.text = "Error al detectar texto"
+                    speakOut("Error al detectar texto")
                 }
                 .addOnCompleteListener {
-                    imageProxy.close()  // cerrar el frame recién analizado
+                    imageProxy.close()
                 }
         } else {
             imageProxy.close()
         }
     }
 
-    // Inicialización de TTS
-    override fun onInit(status: Int) {
-        if (status == TextToSpeech.SUCCESS) {
-            val result = tts.setLanguage(Locale("es", "ES"))
-            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-                Log.e("TTS", "Idioma no soportado")
-            }
-        } else {
-            Log.e("TTS", "Inicialización fallida")
-        }
-    }
-
-    // Función para hablar
-    private fun speak(text: String) {
+    private fun speakOut(text: String) {
         tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, null)
     }
 
@@ -153,6 +147,31 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         ContextCompat.checkSelfPermission(
             baseContext, it
         ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int, permissions: Array<String>, grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_CODE_PERMISSIONS) {
+            if (allPermissionsGranted()) {
+                startCamera()
+            } else {
+                Toast.makeText(this, "Permisos no concedidos.", Toast.LENGTH_SHORT).show()
+                finish()
+            }
+        }
+    }
+
+    override fun onInit(status: Int) {
+        if (status == TextToSpeech.SUCCESS) {
+            val result = tts.setLanguage(Locale("es", "ES"))
+            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                Log.e(TAG, "Idioma no soportado")
+            }
+        } else {
+            Log.e(TAG, "Error al inicializar TTS")
+        }
     }
 
     override fun onDestroy() {
