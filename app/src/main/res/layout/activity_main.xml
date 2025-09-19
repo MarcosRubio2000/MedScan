@@ -20,7 +20,6 @@
         app:layout_constraintTop_toTopOf="parent">
 
         <!-- Botón de linterna -->
-        <!-- Botón de linterna -->
         <ImageButton
             android:id="@+id/flashButton"
             android:layout_width="0dp"
@@ -74,7 +73,6 @@
             android:layout_marginStart="10dp" />
 
     </androidx.constraintlayout.widget.ConstraintLayout>
-
 
     <TextView
         android:id="@+id/textView"
