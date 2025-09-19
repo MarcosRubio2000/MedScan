@@ -9,81 +9,77 @@ import java.text.Normalizer
 class MedicineDatabaseHelper(context: Context) {
 
     private var medicineList: List<String>
+    private var doseList: List<String>
 
     init {
-        // Cargar medicamentos desde el JSON en assets
-        val inputStream = context.assets.open("medicamentos.json")
-        val bufferedReader = BufferedReader(InputStreamReader(inputStream))
-        val jsonString = bufferedReader.use { it.readText() }
-
-        val jsonArray = JSONArray(jsonString)
-        val tempList = mutableListOf<String>()
-        for (i in 0 until jsonArray.length()) {
-            tempList.add(jsonArray.getString(i))
+        // Cargar medicamentos
+        val medInput = context.assets.open("medicamentos.json")
+        val medReader = BufferedReader(InputStreamReader(medInput))
+        val medJson = medReader.use { it.readText() }
+        val medArray = JSONArray(medJson)
+        val tempMed = mutableListOf<String>()
+        for (i in 0 until medArray.length()) {
+            tempMed.add(medArray.getString(i))
         }
-        medicineList = tempList.distinct() // evita duplicados
+        medicineList = tempMed.distinct()
+
+        // Cargar dosis
+        val doseInput = context.assets.open("dosis.json")
+        val doseReader = BufferedReader(InputStreamReader(doseInput))
+        val doseJson = doseReader.use { it.readText() }
+        val doseArray = JSONArray(doseJson)
+        val tempDose = mutableListOf<String>()
+        for (i in 0 until doseArray.length()) {
+            tempDose.add(doseArray.getString(i))
+        }
+        doseList = tempDose.distinct()
     }
 
-    /**
-     * Normaliza un texto: minúsculas, sin acentos ni caracteres especiales.
-     */
     private fun normalizeText(text: String): String {
         val temp = Normalizer.normalize(text, Normalizer.Form.NFD)
         return temp
             .replace("\\p{Mn}+".toRegex(), "")   // quita acentos
             .lowercase()
-            .replace("[^a-z0-9 ]".toRegex(), "") // elimina símbolos y signos
+            .replace("[^a-z0-9 ]".toRegex(), "") // elimina símbolos
             .trim()
     }
 
     /**
-     * Busca múltiples coincidencias dentro del texto detectado.
-     * Devuelve todos los medicamentos que estén presentes o sean muy parecidos.
+     * Busca coincidencia de medicamento + dosis en una línea.
      */
-    fun findMedicines(detectedText: String): List<String> {
-        val normalizedDetected = normalizeText(detectedText)
+    fun findMedicineWithDose(lineText: String): String? {
+        val normalizedLine = normalizeText(lineText)
 
-        val matches = mutableListOf<String>()
+        var foundMedicine: String? = null
+        var foundDose: String? = null
 
+        // Buscar medicamento en la línea
         for (medicine in medicineList) {
             val normalizedMedicine = normalizeText(medicine)
-
-            // Coincidencia directa
-            if (normalizedDetected.contains(normalizedMedicine)) {
-                matches.add(medicine)
-                continue
-            }
-
-            // Coincidencia aproximada
-            val score = similarity(normalizedDetected, normalizedMedicine)
-            if (score > 0.7) { // umbral para evitar falsos positivos
-                matches.add(medicine)
+            if (normalizedLine.contains(normalizedMedicine)) {
+                foundMedicine = medicine
+                break
             }
         }
 
-        return matches.distinct()
-    }
-
-    private fun similarity(s1: String, s2: String): Double {
-        val longer = if (s1.length > s2.length) s1 else s2
-        val shorter = if (s1.length > s2.length) s2 else s1
-        val longerLength = longer.length
-        if (longerLength == 0) return 1.0
-        return (longerLength - editDistance(longer, shorter)) / longerLength.toDouble()
-    }
-
-    private fun editDistance(s1: String, s2: String): Int {
-        val costs = IntArray(s2.length + 1) { it }
-        for (i in 1..s1.length) {
-            var lastValue = i - 1
-            costs[0] = i
-            for (j in 1..s2.length) {
-                val newValue = if (s1[i - 1] == s2[j - 1]) lastValue
-                else 1 + minOf(minOf(costs[j], costs[j - 1]), lastValue)
-                lastValue = costs[j]
-                costs[j] = newValue
+        // Buscar dosis en la línea
+        for (dose in doseList) {
+            val normalizedDose = normalizeText(dose)
+            if (normalizedLine.contains(normalizedDose)) {
+                foundDose = dose
+                break
             }
         }
-        return costs[s2.length]
+
+        // Si encontramos ambos en la misma línea → asociamos
+        if (foundMedicine != null) {
+            return if (foundDose != null) {
+                "$foundMedicine $foundDose"
+            } else {
+                foundMedicine
+            }
+        }
+
+        return null
     }
 }

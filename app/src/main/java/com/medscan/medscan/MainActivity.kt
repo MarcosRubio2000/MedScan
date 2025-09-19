@@ -102,15 +102,23 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
             recognizer.process(inputImage)
                 .addOnSuccessListener { visionText ->
-                    val detectedText = visionText.text
-                    Log.d(TAG, "Texto detectado: $detectedText")
+                    val results = mutableListOf<String>()
 
-                    val matches = dbHelper.findMedicines(detectedText)
+                    // Recorremos bloques y líneas de texto
+                    for (block in visionText.textBlocks) {
+                        for (line in block.lines) {
+                            val lineText = line.text
+                            val match = dbHelper.findMedicineWithDose(lineText)
+                            if (match != null) {
+                                results.add(match)
+                            }
+                        }
+                    }
 
-                    if (matches.isNotEmpty()) {
-                        val result = matches.joinToString(", ")
-                        viewBinding.textView.text = result
-                        speakOut(result)
+                    if (results.isNotEmpty()) {
+                        val resultText = results.joinToString("\n")
+                        viewBinding.textView.text = resultText
+                        speakOut(resultText)
                     } else {
                         viewBinding.textView.text = "No se encontró coincidencia"
                         speakOut("Intente nuevamente")
@@ -124,6 +132,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 .addOnCompleteListener {
                     imageProxy.close()
                 }
+
         } else {
             imageProxy.close()
         }
