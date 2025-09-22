@@ -44,6 +44,34 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private lateinit var repo: MedicineRepository
 
     @Suppress("DEPRECATION")
+    private fun vibrateFlash(isOn: Boolean) {
+        val vibrator = getSystemService(VIBRATOR_SERVICE) as android.os.Vibrator
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val effect = if (isOn) {
+                // Encendido → vibración más larga
+                android.os.VibrationEffect.createOneShot(
+                    250,
+                    android.os.VibrationEffect.DEFAULT_AMPLITUDE
+                )
+            } else {
+                // Apagado → vibración doble cortita
+                android.os.VibrationEffect.createWaveform(
+                    longArrayOf(0, 100, 80, 100), // pausa 0ms, vibra 100, pausa 80, vibra 100
+                    -1 // no repetir
+                )
+            }
+            vibrator.vibrate(effect)
+        } else {
+            // Compatibilidad con APIs viejas (<26)
+            if (isOn) {
+                vibrator.vibrate(250)
+            } else {
+                vibrator.vibrate(longArrayOf(0, 100, 80, 100), -1)
+            }
+        }
+    }
+
+    @Suppress("DEPRECATION")
     private fun vibratePhone() {
         val vibrator = getSystemService(VIBRATOR_SERVICE) as Vibrator
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -90,8 +118,12 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             vibratePhone()
             camera?.let { cam ->
                 if (cam.cameraInfo.hasFlashUnit()) {
-                    val current = cam.cameraInfo.torchState.value
-                    cam.cameraControl.enableTorch(current != TorchState.ON)
+                    val torchState = cam.cameraInfo.torchState.value
+                    val newState = torchState != TorchState.ON
+                    cam.cameraControl.enableTorch(newState)
+
+                    // ✅ Llamada a la nueva vibración
+                    vibrateFlash(newState)
                 } else {
                     Toast.makeText(this, "El dispositivo no tiene linterna", Toast.LENGTH_SHORT).show()
                 }
