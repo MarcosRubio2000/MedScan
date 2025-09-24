@@ -266,7 +266,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                             if (dose != null) "$drug $dose" else drug
                         }
                         viewBinding.textView.text = spoken
-                        viewBinding.ttsIcon.setImageResource(R.drawable.ic_tts_verde)
+                        viewBinding.run { ttsIcon.setImageResource(R.drawable.ic_tts_verde) }
                         speakOut(spoken)
                     } else {
                         viewBinding.textView.text = "No se encontró coincidencia"
@@ -316,7 +316,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 Log.e(TAG, "Idioma no soportado")
             }
 
-            tts.setSpeechRate(1.15f) // un poco más lento
+            tts.setSpeechRate(1.10f) // un poco más lento
             tts.setPitch(1.0f)       // tono neutro
 
             tts.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
