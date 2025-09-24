@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Botón principal con centro semitransparente -->
+    <item android:bottom="4dp" android:right="4dp">
+        <shape android:shape="rectangle">
+            <!-- Azul #407BFF con 50% transparencia -->
+            <solid android:color="#90407BFF"/>
+            <corners android:radius="16dp"/>
+            <!-- Borde blanco -->
+            <stroke android:width="2dp" android:color="#FFFFFF"/>
+        </shape>
+    </item>
+
+</layer-list>

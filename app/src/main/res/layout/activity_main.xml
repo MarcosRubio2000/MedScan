@@ -103,15 +103,20 @@
             android:id="@+id/detection_button"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:textColor="#80FFFFFF"
-            android:gravity="center"
-            android:elevation="2dp"
             android:text="@string/detection"
             android:textStyle="bold"
             android:textSize="60sp"
-            android:background="@android:color/transparent"
+            android:textColor="@android:color/white"
+            android:gravity="center"
+
+            android:background="@drawable/button_3d"
+            android:backgroundTint="@null"
+            app:backgroundTint="@null"
+            android:tint="@null"
+            android:elevation="8dp"
             android:foreground="?attr/selectableItemBackground"
             android:contentDescription="Iniciar detección de medicamento" />
+
 
     </LinearLayout>
 

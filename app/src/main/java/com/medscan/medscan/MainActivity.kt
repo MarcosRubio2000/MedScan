@@ -88,6 +88,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Log.d("OCR_RESULT", "MainActivity onCreate()")
         viewBinding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(viewBinding.root)
 
@@ -174,18 +175,22 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     }
 
     private fun processImage(imageProxy: ImageProxy) {
+        Log.d("OCR_RESULT", "processImage called")
         val mediaImage = imageProxy.image ?: run { imageProxy.close(); return }
         val rotation = imageProxy.imageInfo.rotationDegrees
         val inputImage = InputImage.fromMediaImage(mediaImage, rotation)
 
         recognizer.process(inputImage)
             .addOnSuccessListener { visionText ->
+                Log.d("OCR_RESULT", "OCR completo:\n${visionText.text}")
                 lifecycleScope.launch {
                     // Cada línea con bounding box
                     data class LineInfo(val text: String, val rect: android.graphics.Rect)
                     val lines = mutableListOf<LineInfo>()
                     for (block in visionText.textBlocks) {
+                        Log.d("OCR_RESULT", "Bloque: ${block.text}")
                         for (line in block.lines) {
+                            Log.d("OCR_RESULT", "  Línea: ${line.text}")
                             val r = line.boundingBox
                             if (r != null) lines.add(LineInfo(line.text, r))
                         }
