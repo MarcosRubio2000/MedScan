@@ -203,7 +203,7 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             })
 
             speak(
-                "Enfoque la caja y presione Detectar. Luego diga: El medicamento se llama, seguido del nombre.",
+                "Enfoque la caja y presione Detectar.",
                 UTT_INIT
             )
         } else {
@@ -274,9 +274,9 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                         }
 
                         binding.textView.text =
-                            "No se entendió. Vuelva a decir: El medicamento se llama..."
+                            "Error. Vuelva a decir: El medicamento se llama..."
                         speak(
-                            "No se entendió. Vuelva a decir: El medicamento se llama, seguido del nombre.",
+                            "Error. Vuelva a decir: El medicamento se llama, seguido del nombre.",
                             UTT_PROMPT
                         )
                     }
@@ -302,17 +302,11 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
                         if (said.isEmpty()) {
                             Log.d(STT_TAG, "Sin resultado ni parcial utilizable")
-                            binding.textView.text = "No se entendió. Vuelva a decir: El medicamento se llama..."
-                            speak("No se entendió. Vuelva a decir: El medicamento se llama, seguido del nombre.", UTT_PROMPT)
+                            binding.textView.text = "Error. Vuelva a decir: El medicamento se llama..."
+                            speak("Error. Vuelva a decir: El medicamento se llama, seguido del nombre.", UTT_PROMPT)
                             return
                         }
 
-                        // Permitir "salir" por voz
-                        if (saidNorm == "SALIR") {
-                            Log.d(STT_TAG, "comando salir detectado")
-                            finish()
-                            return
-                        }
 
                         // --- Validación y extracción tolerante del trigger ---
                         val m = TRIGGER_REGEX.find(said)
