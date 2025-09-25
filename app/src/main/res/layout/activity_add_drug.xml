@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context=".AddDrugActivity">
+
+    <androidx.camera.view.PreviewView
+        android:id="@+id/viewFinder"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="Vista previa de la cámara para agregar un medicamento" />
+
+    <!-- Header: linterna izquierda + salir derecha -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="130dp"
+        android:layout_margin="10dp"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <!-- Linterna -->
+        <ImageButton
+            android:id="@+id/flashButton"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:src="@drawable/ic_lantern_off"
+            android:contentDescription="Activar o desactivar linterna"
+            android:alpha="0.8"
+            android:scaleType="fitCenter"
+            android:padding="30dp"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintWidth_percent="0.32"
+            app:layout_constraintDimensionRatio="1:1"
+            android:layout_marginEnd="10dp"
+            android:background="@drawable/ripple_round_button" />
+
+        <!-- Botón Salir -->
+        <ImageButton
+            android:id="@+id/exitButton"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:src="@drawable/ic_exit"
+            android:contentDescription="Salir y volver al inicio"
+            android:alpha="0.8"
+            android:scaleType="fitCenter"
+            android:padding="30dp"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintWidth_percent="0.32"
+            app:layout_constraintDimensionRatio="1:1"
+            android:layout_marginStart="10dp"
+            android:background="@drawable/ripple_round_button" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <!-- Texto de instrucciones / resultado -->
+    <TextView
+        android:id="@+id/textView"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#10DDDDDD"
+        android:padding="10dp"
+        android:layout_marginBottom="75dp"
+        android:text="Enfoque la caja y presione Detectar. Luego diga el nombre del medicamento."
+        android:textSize="20sp"
+        android:textColor="#80FFFFFF"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:contentDescription="Instrucciones"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="0.5"/>
+
+    <!-- Botón Detectar (reutiliza tus drawables) -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:orientation="horizontal"
+        android:layout_margin="10dp"
+        android:layout_height="300dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        android:background="@drawable/fondo_redondeado">
+
+        <Button
+            android:id="@+id/detection_button"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:text="DETECTAR"
+            android:textStyle="bold"
+            android:textSize="60sp"
+            android:textColor="@android:color/white"
+            android:gravity="center"
+            android:background="@drawable/button_3d"
+            android:backgroundTint="@null"
+            app:backgroundTint="@null"
+            android:tint="@null"
+            android:elevation="8dp"
+            android:foreground="?attr/selectableItemBackground"
+            android:contentDescription="Iniciar detección de medicamento" />
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

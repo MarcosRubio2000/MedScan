@@ -30,6 +30,8 @@ import kotlinx.coroutines.launch
 import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import android.content.Intent
+
 
 val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
 
@@ -95,6 +97,12 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         repo = MedicineRepository(this)
         tts = TextToSpeech(this, this)
 
+        // Botón Add Drug -> abrir nueva pantalla
+        viewBinding.addDrugButton.setOnClickListener {
+            vibratePhone()
+            startActivity(Intent(this, AddDrugActivity::class.java))
+        }
+
         // Pedir permisos
         if (allPermissionsGranted()) {
             startCamera()
@@ -105,6 +113,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         }
 
         cameraExecutor = Executors.newSingleThreadExecutor()
+
 
         // Botón Detectar
         viewBinding.detectionButton.setOnClickListener {
@@ -336,6 +345,12 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         } else {
             Log.e(TAG, "Error al inicializar TTS")
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Reinicia el preview al volver desde AddDrugActivity
+        startCamera()
     }
 
     override fun onDestroy() {

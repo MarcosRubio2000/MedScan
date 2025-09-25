@@ -11,6 +11,16 @@ import kotlin.math.min
 data class FoundPair(val drug: String, val dose: String?)
 
 class MedicineRepository(context: Context) {
+
+    // Palabras muy comunes en cajas que NO deben accionar fuzzy
+    private val PACKAGING_STOPWORDS = setOf(
+        "ARGENTINA", "INDUSTRIA", "COMPRIMIDOS", "COMPRIMIDO",
+        "TABLETAS", "TABLETA", "CAPSULAS", "CAPSULA",
+        "VENTA", "RECETA", "LOTE", "VENCIMIENTO", "VTO",
+        "LABORATORIO", "LAB", "CONTENIDO", "NETO", "MG", "G", "MCG", "µG"
+    )
+
+
     private val dao = AppDatabase.get(context).medicineDao()
 
     /* =======================
@@ -85,19 +95,42 @@ class MedicineRepository(context: Context) {
 
     private fun fuzzyBest(normText: String, drugs: List<Drug>): Drug? {
         var best: Pair<Drug, Int>? = null
-        val words = normText.split(' ').filter { it.length >= 4 }
+
+        // Tokenizar el OCR: palabras útiles (>=4 letras) y no-stopwords
+        val words = normText
+            .split(' ')
+            .map { it.trim() }
+            .filter { it.length >= 4 && it !in PACKAGING_STOPWORDS }
+
         for (d in drugs) {
             val dn = d.normalized
+
+            // Si aparece como substring exacto ya está (pero esto ya se chequea antes)
             if (normText.contains(dn)) return d
+
+            // Umbral por longitud (más estricto para largas)
             val allowed = when {
-                dn.length >= 12 -> 3
-                dn.length >= 9  -> 2
+                dn.length >= 12 -> 2
+                dn.length >= 9  -> 1
                 dn.length >= 6  -> 1
                 else            -> 1
             }
+
             for (w in words) {
+                // Evitar comparar con palabras demasiado distintas en longitud
+                val lenDiff = kotlin.math.abs(w.length - dn.length)
+                if (lenDiff > 2) continue
+
+                // Requerir alguna coincidencia de borde para bajar falsos positivos tipo ARGENTINA vs MANDARINA
+                val sameEdge = (w.firstOrNull() == dn.firstOrNull()) || (w.lastOrNull() == dn.lastOrNull())
+                if (!sameEdge) continue
+
                 val dist = levenshtein(w, dn)
-                if (dist <= allowed) {
+
+                // También chequear distancia relativa
+                val maxLen = maxOf(w.length, dn.length).toFloat()
+                val rel = 1f - (dist / maxLen)  // 1.0 = idéntico
+                if (dist <= allowed && rel >= 0.80f) {
                     if (best == null || dist < best!!.second) best = d to dist
                 }
             }
