@@ -37,15 +37,6 @@ import java.util.concurrent.Executors
 import kotlin.math.abs
 import kotlin.math.max
 
-/**
- * Pantalla para agregar un medicamento:
- * - OCR al presionar "Detectar" (solo continúa si el OCR trae texto significativo)
- * - TTS da la instrucción y luego se inicia STT
- * - STT acepta: "El medicamento se llama ...", "medicamento se llama ...", "se llama ..."
- * - Se guarda SOLO si hay match fuzzy entre lo dicho y el texto de la foto
- * - Si hay match, se prioriza guardar el token que vino del OCR (o el nombre canónico si está en DB)
- * - Botón "Salir" (arriba derecha) -> finish()
- */
 @ExperimentalGetImage
 class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
@@ -60,20 +51,23 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private lateinit var repo: MedicineRepository
 
     private var lastOcrText: String = ""
-    private var lastPartialSaid: String? = null // cache de parciales
+    private var lastPartialSaid: String? = null
     private var sttAutoRetryPending = false
+
+    // ➕ Contador de fallas estructurales
+    private var sttStructuralFailCount = 0
+    private val MAX_STRUCTURAL_FAILS = 3
 
     // IDs TTS
     private val UTT_INIT   = "UTT_INIT"
     private val UTT_PROMPT = "UTT_PROMPT"
 
-    // Regex gatillo (opcional "El", opcional "medicamento", y siempre "se llama")
+    // Regex gatillo flexible
     private val TRIGGER_REGEX = Regex(
         pattern = """^\s*(?:El\s+)?(?:medicamento\s+)?se\s+llama\s+(.*)$""",
         options = setOf(RegexOption.IGNORE_CASE)
     )
 
-    // Para devolver la decisión del match OCR <-> voz
     private data class OcrFuzzy(val ok: Boolean, val ocrToken: String?, val score: Float)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -84,24 +78,16 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         repo = MedicineRepository(this)
         tts = TextToSpeech(this, this)
 
-        // Permisos
-        if (allPermissionsGranted()) {
-            startCamera()
-        } else {
-            ActivityCompat.requestPermissions(this, REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS)
-        }
+        if (allPermissionsGranted()) startCamera()
+        else ActivityCompat.requestPermissions(this, REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS)
 
         cameraExecutor = Executors.newSingleThreadExecutor()
 
-        // Botón Detectar -> OCR
         binding.detectionButton.setOnClickListener {
             vibrateShort()
-            imageAnalysis?.setAnalyzer(cameraExecutor) { image ->
-                processImage(image)
-            }
+            imageAnalysis?.setAnalyzer(cameraExecutor) { image -> processImage(image) }
         }
 
-        // Botón Linterna
         binding.flashButton.setOnClickListener {
             vibrateShort()
             camera?.let { cam ->
@@ -115,7 +101,6 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             }
         }
 
-        // Botón Salir
         binding.exitButton.setOnClickListener {
             vibrateShort()
             finish()
@@ -145,11 +130,10 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 camera = cameraProvider.bindToLifecycle(this, selector, preview, imageAnalysis)
 
                 camera?.cameraInfo?.torchState?.observe(this) { state ->
-                    if (state == TorchState.ON) {
-                        binding.flashButton.setImageResource(R.drawable.ic_lantern_on)
-                    } else {
-                        binding.flashButton.setImageResource(R.drawable.ic_lantern_off)
-                    }
+                    binding.flashButton.setImageResource(
+                        if (state == TorchState.ON) R.drawable.ic_lantern_on
+                        else R.drawable.ic_lantern_off
+                    )
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error al iniciar la cámara", e)
@@ -162,7 +146,6 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         val rotation = imageProxy.imageInfo.rotationDegrees
         val input = InputImage.fromMediaImage(mediaImage, rotation)
 
-        // 'recognizer' está definido a nivel de package (ver MainActivity.kt)
         recognizer.process(input)
             .addOnSuccessListener { visionText ->
                 val raw = visionText.text ?: ""
@@ -174,6 +157,9 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                     speak("No se detectó texto legible. Vuelva a enfocar y presione Detectar.", UTT_INIT)
                     lastOcrText = ""
                 } else {
+                    // ✅ Nuevo OCR válido → reseteo de fallas
+                    sttStructuralFailCount = 0
+
                     binding.textView.text =
                         "Texto detectado. Diga a continuación: El medicamento se llama... para continuar."
                     speak(
@@ -210,7 +196,7 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                     if (utteranceId == UTT_PROMPT) {
                         binding.textView.postDelayed({
                             if (lastOcrText.isNotBlank()) startListening()
-                        }, 900) // un poco más para no auto-escucharse
+                        }, 900)
                     }
                 }
                 override fun onError(utteranceId: String?) {}
@@ -247,55 +233,29 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         if (stt == null) {
             stt = SpeechRecognizer.createSpeechRecognizer(this).apply {
                 setRecognitionListener(object : RecognitionListener {
-                    override fun onReadyForSpeech(params: Bundle?) {
-                        Log.d(STT_TAG, "onReadyForSpeech")
-                    }
-                    override fun onBeginningOfSpeech() {
-                        Log.d(STT_TAG, "onBeginningOfSpeech")
-                    }
+                    override fun onReadyForSpeech(params: Bundle?) { Log.d(STT_TAG, "onReadyForSpeech") }
+                    override fun onBeginningOfSpeech() { Log.d(STT_TAG, "onBeginningOfSpeech") }
                     override fun onRmsChanged(rmsdB: Float) {}
                     override fun onBufferReceived(buffer: ByteArray?) {}
-                    override fun onEndOfSpeech() {
-                        Log.d(STT_TAG, "onEndOfSpeech")
-                    }
+                    override fun onEndOfSpeech() { Log.d(STT_TAG, "onEndOfSpeech") }
 
                     override fun onError(error: Int) {
                         Log.e(STT_TAG, "onError: ${sttErrorToString(error)} ($error)")
 
                         if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) {
-                            try {
-                                stt?.cancel()
-                                stt?.destroy()
-                            } catch (_: Exception) {}
+                            try { stt?.cancel(); stt?.destroy() } catch (_: Exception) {}
                             stt = null
                             binding.textView.postDelayed({ if (lastOcrText.isNotBlank()) startListening() }, 300)
                             return
                         }
 
-                        // Reintento automático una vez ante no-match/silencio
-                        if ((error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) && !sttAutoRetryPending) {
-                            sttAutoRetryPending = true
-                            binding.textView.postDelayed({
-                                sttAutoRetryPending = false
-                                if (lastOcrText.isNotBlank()) startListening()
-                            }, 600)
+                        // Silencio / no match → cuenta como falla estructural (caso 2)
+                        if (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
+                            handleStructuralFailAndMaybeStop()
                             return
                         }
 
-                        // Fallback con parcial útil (contiene "llama")
-                        if (!lastPartialSaid.isNullOrBlank() &&
-                            lastPartialSaid!!.contains("llama", ignoreCase = true)) {
-                            Log.d(STT_TAG, "Usando parcial tras error: '${lastPartialSaid}'")
-                            val fake = Bundle().apply {
-                                putStringArrayList(
-                                    SpeechRecognizer.RESULTS_RECOGNITION,
-                                    arrayListOf(lastPartialSaid!!)
-                                )
-                            }
-                            onResults(fake)
-                            return
-                        }
-
+                        // Otros errores → mensaje formal
                         binding.textView.text =
                             "No fue posible reconocer su respuesta. Por favor, diga: El medicamento se llama..."
                         speak(
@@ -308,7 +268,7 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                         val matches = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                         var said = matches?.firstOrNull()?.trim().orEmpty()
 
-                        // Fallback si no hay final: usar el último parcial solo si es útil
+                        // Fallback: usar parcial solo si incluye "llama"
                         if (said.isEmpty() && !lastPartialSaid.isNullOrBlank()) {
                             val lp = lastPartialSaid!!.trim()
                             if (lp.contains("llama", ignoreCase = true)) {
@@ -318,39 +278,23 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                         }
 
                         val saidNorm = normalizeLettersOnly(said)
-
                         Log.d(STT_TAG, "matches=$matches")
                         Log.d(STT_TAG, "said='$said'")
                         Log.d(STT_TAG, "saidNorm='$saidNorm'")
 
                         if (said.isEmpty()) {
-                            Log.d(STT_TAG, "Sin resultado ni parcial utilizable")
-                            binding.textView.text =
-                                "No fue posible reconocer su respuesta. Por favor, diga: El medicamento se llama..."
-                            speak(
-                                "No fue posible reconocer su respuesta. Por favor, diga: El medicamento se llama, seguido del nombre.",
-                                UTT_PROMPT
-                            )
+                            // No se dijo nada útil → falla estructural (caso 2)
+                            handleStructuralFailAndMaybeStop()
                             return
                         }
 
-                        // Comando de salida por voz
-                        if (saidNorm == "SALIR") {
-                            Log.d(STT_TAG, "comando salir detectado")
-                            finish()
-                            return
-                        }
+                        if (saidNorm == "SALIR") { finish(); return }
 
                         // Extraer nombre con trigger flexible
                         val m = TRIGGER_REGEX.find(said)
                         if (m == null) {
-                            Log.d(STT_TAG, "no matchea trigger regex")
-                            binding.textView.text =
-                                "Por favor, comience diciendo: El medicamento se llama, y luego el nombre."
-                            speak(
-                                "Por favor, comience diciendo: El medicamento se llama, y luego el nombre.",
-                                UTT_PROMPT
-                            )
+                            // No respeta el gatillo → falla estructural (caso 1)
+                            handleStructuralFailAndMaybeStop()
                             return
                         }
 
@@ -358,15 +302,12 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                         Log.d(STT_TAG, "nameRaw extraído='$nameRaw'")
 
                         if (nameRaw.isEmpty()) {
-                            binding.textView.text =
-                                "No se detectó el nombre del medicamento. Intente nuevamente."
-                            speak(
-                                "No se detectó el nombre del medicamento. Intente nuevamente.",
-                                UTT_PROMPT
-                            )
+                            // Gatillo correcto pero sin nombre → falla estructural (caso 2)
+                            handleStructuralFailAndMaybeStop()
                             return
                         }
 
+                        // Hasta acá estructura OK → no cuenta como falla
                         handleSpokenName(nameRaw)
                     }
 
@@ -383,14 +324,12 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             }
         }
 
-        // Intent configurado para más tolerancia de tiempo
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-AR")
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "es-AR")
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            // márgenes más holgados
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1800)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2200)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 3000)
@@ -400,6 +339,35 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         lastPartialSaid = null
         Log.d(STT_TAG, "startListening con idioma es-AR")
         stt?.startListening(intent)
+    }
+
+    /**
+     * Cuenta una falla estructural y decide si detener o reintentar.
+     */
+    private fun handleStructuralFailAndMaybeStop() {
+        sttStructuralFailCount++
+        Log.d(STT_TAG, "Falla estructural #$sttStructuralFailCount / $MAX_STRUCTURAL_FAILS")
+
+        if (sttStructuralFailCount >= MAX_STRUCTURAL_FAILS) {
+            // Detener la escucha y pedir volver a Detectar
+            binding.textView.text =
+                "Se detectaron varios intentos fallidos. Por favor, presione Detectar para volver a intentar."
+            speak(
+                "Se detectaron varios intentos fallidos. Por favor, presione Detectar para volver a intentar.",
+                UTT_INIT
+            )
+            // No reiniciamos el STT aquí
+            return
+        }
+
+        // Reintento: repetir instrucción y volver a escuchar
+        binding.textView.text =
+            "Por favor, diga: El medicamento se llama... y el nombre."
+        speak(
+            "Por favor, diga: El medicamento se llama, seguido del nombre.",
+            UTT_PROMPT
+        )
+        // startListening() se volverá a invocar al terminar el TTS (UTT_PROMPT)
     }
 
     /* ------------------- Match & Guardado ------------------- */
@@ -417,47 +385,45 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             val spoken = nameRaw.trim()
             val ocr = lastOcrText
 
-            // 1) ¿Coinciden (fuzzy) lo dicho y el OCR?
-            val fm = ocrMatchesSpoken(spoken, ocr) // devuelve ok + token del OCR más parecido
+            val fm = ocrMatchesSpoken(spoken, ocr)
             Log.d(STT_TAG, "Fuzzy OCR↔voz ok=${fm.ok} score=${fm.score} tokenOCR='${fm.ocrToken}'")
             if (!fm.ok) {
+                // ⚠️ No cuenta como falla estructural → solo reintenta
                 runOnUiThread {
                     binding.textView.text =
-                        "Lo indicado no coincide con el texto de la fotografía. Intente nuevamente."
+                        "Lo indicado no coincide con el texto detectado. Intente nuevamente."
                     speak(
-                        "Lo indicado no coincide con el texto de la fotografía. Intente nuevamente.",
+                        "Lo indicado no coincide con el texto detectado. Intente nuevamente.",
                         UTT_PROMPT
                     )
                 }
                 return@launch
             }
 
-            // 2) Elegir nombre canónico para guardar, priorizando lo que vino del OCR
+            // Éxito semántico → resetear fallas
+            sttStructuralFailCount = 0
+
             val ocrToken = fm.ocrToken ?: spoken
             val ocrDbName = repo.findBestDrugName(ocrToken)
             val toInsert = when {
-                !ocrDbName.isNullOrBlank() -> ocrDbName             // nombre canónico conocido
-                else -> toTitleCaseEs(ocrToken)                      // token OCR formateado
+                !ocrDbName.isNullOrBlank() -> ocrDbName
+                else -> toTitleCaseEs(ocrToken)
             }
 
-            // 3) Guardar (o informar si ya existe)
             val dao = AppDatabase.get(this@AddDrugActivity).medicineDao()
             val newDrug = Drug(name = toInsert, normalized = normalizeLettersOnly(toInsert))
-            dao.insertDrugs(listOf(newDrug)) // IGNORE evitará duplicado si ya existe
+            dao.insertDrugs(listOf(newDrug))
 
             runOnUiThread {
-                val msg = "Medicamento guardado: $toInsert"
+                val msg = "Medicamento añadido: $toInsert"
                 binding.textView.text = msg
                 speak(msg, UTT_INIT)
             }
         }
     }
 
-    /**
-     * Decide si el OCR trae texto "significativo":
-     * - al menos 2 tokens alfanuméricos
-     * - total de letras/dígitos >= 6
-     */
+    /* ------------------- OCR utils / Fuzzy ------------------- */
+
     private fun hasMeaningfulOcr(raw: String): Boolean {
         val norm = normalizeLettersOnly(raw)
         if (norm.isBlank()) return false
@@ -466,51 +432,34 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         return tokens.size >= 2 && chars >= 6
     }
 
-    /**
-     * Match fuzzy entre lo dicho y el texto OCR.
-     * Regla:
-     * - Si el OCR contiene literalmente lo dicho (normalizado) → OK (score 1.0).
-     * - Si no, se compara contra cada token del OCR (manteniendo su forma original),
-     *   con Levenshtein relativo y regla de borde. Devuelve el **token original** del OCR.
-     */
     private fun ocrMatchesSpoken(spoken: String, ocrText: String, threshold: Float = 0.78f): OcrFuzzy {
         val sNorm = normalizeLettersOnly(spoken)
         val raw = ocrText
         val oNorm = normalizeLettersOnly(raw)
-
         if (sNorm.isBlank() || oNorm.isBlank()) return OcrFuzzy(false, null, 0f)
 
-        // Tokenizar manteniendo texto original y normalizado
         data class Tok(val orig: String, val norm: String)
         val tokens = raw.split(Regex("\\s+"))
             .map { it.trim() }
             .filter { it.isNotEmpty() }
             .map { Tok(it, normalizeLettersOnly(it)) }
 
-        // Match literal (norm) contra la frase OCR completa
         if (oNorm.contains(sNorm)) return OcrFuzzy(true, sNorm, 1f)
 
         var bestSim = 0f
         var best: Tok? = null
-
         for (t in tokens) {
             if (t.norm.length < 3) continue
             if (abs(t.norm.length - sNorm.length) > 3) continue
-
             val sameEdge = (t.norm.firstOrNull() == sNorm.firstOrNull()) ||
                     (t.norm.lastOrNull()  == sNorm.lastOrNull())
-
             val sim = levenshteinSimilarity(t.norm, sNorm)
             if (sim > bestSim && (sameEdge || sim >= 0.86f)) {
-                bestSim = sim
-                best = t
+                bestSim = sim; best = t
             }
         }
-
-        return if (best != null && bestSim >= threshold)
-            OcrFuzzy(true, best.orig, bestSim)   // devolvemos el token ORIGINAL del OCR
-        else
-            OcrFuzzy(false, null, bestSim)
+        return if (best != null && bestSim >= threshold) OcrFuzzy(true, best.orig, bestSim)
+        else OcrFuzzy(false, null, bestSim)
     }
 
     private fun levenshteinSimilarity(a: String, b: String): Float {
