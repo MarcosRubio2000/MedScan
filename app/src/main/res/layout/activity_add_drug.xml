@@ -65,7 +65,7 @@
         android:background="#10DDDDDD"
         android:padding="10dp"
         android:layout_marginBottom="75dp"
-        android:text="Enfoque la caja y presione Detectar. Luego diga el nombre del medicamento."
+        android:text="Enfoque la caja y presione DETECTAR. Luego diga el nombre del medicamento."
         android:textSize="20sp"
         android:textColor="#80FFFFFF"
         android:textStyle="bold"
