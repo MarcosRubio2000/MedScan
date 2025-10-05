@@ -89,7 +89,8 @@
             android:layout_width="110dp"
             android:layout_height="110dp"
             android:elevation="4dp"
-            android:foreground="?attr/selectableItemBackgroundBorderless"
+            android:foreground="@drawable/ripple_round_button2"
+            android:clipToOutline="true"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintBottom_toBottomOf="parent">
@@ -160,7 +161,8 @@
             android:layout_width="110dp"
             android:layout_height="110dp"
             android:elevation="4dp"
-            android:foreground="?attr/selectableItemBackgroundBorderless"
+            android:foreground="@drawable/ripple_round_button2"
+            android:clipToOutline="true"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintBottom_toBottomOf="parent">
@@ -230,7 +232,8 @@
             android:layout_width="110dp"
             android:layout_height="110dp"
             android:elevation="4dp"
-            android:foreground="?attr/selectableItemBackgroundBorderless"
+            android:foreground="@drawable/ripple_round_button2"
+            android:clipToOutline="true"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintBottom_toBottomOf="parent">
