@@ -1,4 +1,19 @@
 <resources>
     <string name="app_name">MedScan</string>
     <string name="detection">DETECTAR</string>
+    <string name="help_back_cd">Salir y volver al inicio</string>
+    <string name="help_title">INSTRUCCIONES</string>
+
+    <string name="help_opt1_num">1</string>
+    <string name="help_opt1_text">Modo DETECCIÓN</string>
+    <string name="help_opt1_cd">Modo detección. Botón uno.</string>
+
+    <string name="help_opt2_num">2</string>
+    <string name="help_opt2_text">Modo AÑADIR NUEVOS MEDICAMENTOS</string>
+    <string name="help_opt2_cd">Modo añadir nuevos medicamentos. Botón dos.</string>
+
+    <string name="help_opt3_num">3</string>
+    <string name="help_opt3_text">Acerca de MedScan</string>
+    <string name="help_opt3_cd">Acerca de MedScan. Botón tres.</string>
+
 </resources>

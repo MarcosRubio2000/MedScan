@@ -62,13 +62,11 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         cameraExecutor = Executors.newSingleThreadExecutor()
 
 
-        // Botón Ayuda
         // Botón de ayuda
         binding.helpButton.setOnClickListener { v ->
             Haptics.navForward(this, v)
-
+            startActivity(Intent(this, HelpActivity::class.java))
         }
-
 
         // Detectar
         binding.detectionButton.setOnClickListener { v ->

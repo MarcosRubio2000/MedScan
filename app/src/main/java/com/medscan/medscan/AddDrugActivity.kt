@@ -55,7 +55,11 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private val UTT_INIT   = "UTT_INIT"
     private val UTT_PROMPT = "UTT_PROMPT"
 
-    private val TRIGGER_REGEX = Regex("""^\s*(?:El\s+)?(?:medicamento\s+)?se\s+llama\s+(.*)$""", RegexOption.IGNORE_CASE)
+    // acepta: se llama / se yama / se shama   (con o sin “el medicamento”)
+    private val TRIGGER_REGEX = Regex(
+        """^\s*(?:el\s+)?(?:medicamento\s+)?se\s+(?:llama|yama|shama)\s+(.*)$""",
+        RegexOption.IGNORE_CASE
+    )
 
     private data class OcrFuzzy(val ok: Boolean, val ocrToken: String?, val score: Float)
 
@@ -225,7 +229,9 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                         var said = matches?.firstOrNull()?.trim().orEmpty()
                         if (said.isEmpty() && !lastPartialSaid.isNullOrBlank()) {
                             val lp = lastPartialSaid!!.trim()
-                            if (lp.contains("llama", ignoreCase = true)) said = lp
+                            if (lp.contains("llama", true) || lp.contains("yama", true) || lp.contains("shama", true)) {
+                                said = lp
+                            }
                         }
                         val saidNorm = normalizeLettersOnly(said)
                         if (said.isEmpty()) { handleStructuralFailAndMaybeStop(); return }
