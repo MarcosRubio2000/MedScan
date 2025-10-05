@@ -90,8 +90,14 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
         binding.exitButton.setOnClickListener { v ->
             Haptics.navBack(this, v)
+            if (::tts.isInitialized) tts.stop()
             finish()
         }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        if (::tts.isInitialized) tts.stop()
     }
 
     private fun startCamera() {

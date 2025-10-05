@@ -49,6 +49,10 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         // Ir a AddDrug
         binding.addDrugButton.setOnClickListener { v ->
             Haptics.navForward(this, v)
+            if (::tts.isInitialized) {
+                tts.stop()
+                binding.ttsIcon.setImageResource(R.drawable.ic_tts)
+            }
             startActivity(Intent(this, AddDrugActivity::class.java))
         }
 
@@ -74,6 +78,13 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             val isOn = cam.cameraInfo.torchState.value == TorchState.ON
             cam.cameraControl.enableTorch(!isOn)
             if (!isOn) Haptics.flashOn(this, v) else Haptics.flashOff(this, v)
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        if (::tts.isInitialized) {
+            tts.stop()
         }
     }
 
