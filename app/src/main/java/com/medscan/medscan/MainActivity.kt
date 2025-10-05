@@ -51,7 +51,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             Haptics.navForward(this, v)
             if (::tts.isInitialized) {
                 tts.stop()
-                binding.ttsIcon.setImageResource(R.drawable.ic_tts)
             }
             startActivity(Intent(this, AddDrugActivity::class.java))
         }
@@ -61,6 +60,15 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         else ActivityCompat.requestPermissions(this, REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS)
 
         cameraExecutor = Executors.newSingleThreadExecutor()
+
+
+        // Botón Ayuda
+        // Botón de ayuda
+        binding.helpButton.setOnClickListener { v ->
+            Haptics.navForward(this, v)
+
+        }
+
 
         // Detectar
         binding.detectionButton.setOnClickListener { v ->
@@ -189,18 +197,15 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                             if (dose != null) "$drug $dose" else drug
                         }
                         binding.textView.text = spoken
-                        binding.ttsIcon.setImageResource(R.drawable.ic_tts_verde)
                         speakOut(spoken)
                     } else {
                         binding.textView.text = "No se encontró coincidencia"
-                        binding.ttsIcon.setImageResource(R.drawable.ic_tts_rojo)
                         speakOut("Intente nuevamente")
                     }
                 }
             }
             .addOnFailureListener {
                 binding.textView.text = "Error al detectar texto"
-                binding.ttsIcon.setImageResource(R.drawable.ic_tts_rojo)
                 speakOut("Error al detectar texto")
             }
             .addOnCompleteListener {
@@ -234,12 +239,16 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             }
             tts.setSpeechRate(1.10f)
             tts.setPitch(1.0f)
+
+            // Listener opcional (ya sin actualizar íconos)
             tts.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) {}
-                override fun onDone(utteranceId: String?) { runOnUiThread { binding.ttsIcon.setImageResource(R.drawable.ic_tts) } }
-                override fun onError(utteranceId: String?) { runOnUiThread { binding.ttsIcon.setImageResource(R.drawable.ic_tts) } }
+                override fun onDone(utteranceId: String?) {}
+                override fun onError(utteranceId: String?) {}
             })
-        } else Log.e(TAG, "Error al inicializar TTS")
+        } else {
+            Log.e(TAG, "Error al inicializar TTS")
+        }
     }
 
     override fun onResume() {

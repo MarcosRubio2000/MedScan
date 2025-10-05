@@ -6,12 +6,14 @@
     android:layout_height="match_parent"
     tools:context=".MainActivity">
 
+    <!-- Vista de cámara -->
     <androidx.camera.view.PreviewView
         android:id="@+id/viewFinder"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:contentDescription="Vista previa de la cámara para escanear medicamentos" />
 
+    <!-- BARRA SUPERIOR -->
     <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
         android:layout_height="130dp"
@@ -36,22 +38,25 @@
             android:layout_marginEnd="10dp"
             android:background="@drawable/ripple_round_button" />
 
-        <!-- Icono central (decorativo, lo marcamos como no accesible) -->
-        <ImageView
-            android:id="@+id/ttsIcon"
+        <!-- Botón de ayuda -->
+        <ImageButton
+            android:id="@+id/helpButton"
             android:layout_width="0dp"
             android:layout_height="0dp"
-            android:src="@drawable/ic_tts"
-            android:alpha="0.6"
-            android:importantForAccessibility="no"
+            android:src="@drawable/ic_help"
+            android:contentDescription="Abrir menú de ayuda"
+            android:alpha="0.8"
             android:scaleType="fitCenter"
-            android:padding="10dp"
+            android:padding="30dp"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintStart_toEndOf="@id/flashButton"
             app:layout_constraintEnd_toStartOf="@id/addDrugButton"
-            app:layout_constraintWidth_percent="0.18"
-            app:layout_constraintDimensionRatio="1:1"/>
+            app:layout_constraintWidth_percent="0.32"
+            app:layout_constraintDimensionRatio="1:1"
+            android:layout_marginStart="10dp"
+            android:layout_marginEnd="10dp"
+            android:background="@drawable/ripple_round_button" />
 
         <!-- Botón para añadir medicamentos -->
         <ImageButton
@@ -73,6 +78,7 @@
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 
+    <!-- Texto central -->
     <TextView
         android:id="@+id/textView"
         android:layout_width="match_parent"
@@ -89,13 +95,18 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintVertical_bias="0.5"/>
+        app:layout_constraintVertical_bias="0.5" />
 
+    <!-- BOTÓN DETECTAR -->
     <LinearLayout
         android:layout_width="match_parent"
+        android:layout_height="0dp"
         android:orientation="horizontal"
-        android:layout_margin="10dp"
-        android:layout_height="300dp"
+        android:layout_marginStart="10dp"
+        android:layout_marginEnd="10dp"
+        android:layout_marginBottom="10dp"
+        android:layout_marginTop="20dp"
+        app:layout_constraintTop_toBottomOf="@id/textView"
         app:layout_constraintBottom_toBottomOf="parent"
         android:background="@drawable/fondo_redondeado">
 
@@ -108,7 +119,6 @@
             android:textSize="60sp"
             android:textColor="@android:color/white"
             android:gravity="center"
-
             android:background="@drawable/button_3d"
             android:backgroundTint="@null"
             app:backgroundTint="@null"
@@ -116,7 +126,6 @@
             android:elevation="8dp"
             android:foreground="?attr/selectableItemBackground"
             android:contentDescription="Iniciar detección de medicamento" />
-
 
     </LinearLayout>
 
