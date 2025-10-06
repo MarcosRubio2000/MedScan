@@ -1,13 +1,13 @@
 package com.medscan.medscan
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.media.ToneGenerator
 import android.os.Bundle
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
-import android.content.Intent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.view.View
@@ -23,28 +23,36 @@ import kotlin.math.abs
 
 class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
+    // --------- TTS ---------
     private lateinit var tts: TextToSpeech
     private var isTtsReady = false
+
+    // --------- Online SR (fallback) ---------
     private var sr: SpeechRecognizer? = null
 
+    // --------- UI ---------
     private lateinit var statusText: TextView
     private lateinit var backButton: ImageButton
     private lateinit var option1Row: ConstraintLayout
     private lateinit var option2Row: ConstraintLayout
     private lateinit var option3Row: ConstraintLayout
 
+    // --------- Estado ---------
     private var failCount = 0
     private var lastPrompt: String = ""
-
-    // Timeout manual mientras esperamos voz
-    private val STT_TIMEOUT_MS = 3500L
-    private var sttTimeoutRunnable: Runnable? = null
-
-    // Estado STT
     private var lastPartial: String? = null
     private var quickRetryPending = false
 
-    // Frase estándar de re-prompt
+    // --------- Offline Vosk ---------
+    private var useOffline = true
+    private var vosk: VoskMenuRecognizer? = null
+    private var pendingStartWhenReady = false
+
+    // --------- Timeouts ---------
+    private val STT_TIMEOUT_MS = 3500L
+    private var sttTimeoutRunnable: Runnable? = null
+
+    // --------- Mensajes ---------
     private val REPROMPT = "Diga Uno, Dos, Tres, Repetir o Salir."
 
     companion object {
@@ -63,6 +71,41 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         option3Row = findViewById(R.id.option3Row)
 
         tts = TextToSpeech(this, this)
+
+        // --- Preparar Vosk (offline) ---
+        if (useOffline) {
+            vosk = VoskMenuRecognizer(this, object : VoskMenuRecognizer.Callbacks {
+                override fun onReady() {
+                    statusText.text = "Modelo offline listo."
+                    if (pendingStartWhenReady) {
+                        pendingStartWhenReady = false
+                        startListeningWithBeep()
+                    }
+                }
+                override fun onListening() { statusText.text = "Escuchando…" }
+                override fun onPartial(text: String) {
+                    lastPartial = text
+                    matchOption(text)?.let {
+                        forceCloseSttCycle()
+                        dispatchOption(it)
+                    }
+                }
+                override fun onResult(text: String) {
+                    val said = text.ifBlank { lastPartial.orEmpty() }
+                    val opt = matchOption(said)
+                    if (opt != null) {
+                        forceCloseSttCycle()
+                        dispatchOption(opt)
+                    } else {
+                        handleCommand(said)
+                    }
+                }
+                override fun onError(msg: String) {
+                    statusText.text = msg
+                }
+            })
+            vosk?.prepare() // asíncrono
+        }
 
         backButton.setOnClickListener { v ->
             Haptics.navBack(this, v)
@@ -99,7 +142,6 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 Para conocer más información acerca de MedScan, diga Tres.
             """.trimIndent()
 
-            // Intro + reprompt, luego abrimos mic
             speak("$intro $REPROMPT") { askRecordPermissionThen { startListeningWithBeep() } }
         } else {
             statusText.text = "Error al iniciar voz."
@@ -114,14 +156,13 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     override fun onDestroy() {
         super.onDestroy()
         stopAudio()
+        try { vosk?.destroy() } catch (_: Throwable) {}
     }
 
     // ---------------- Helpers de audio / TTS ----------------
     private fun speak(text: String, onDone: (() -> Unit)? = null) {
         if (!isTtsReady) return
-        // asegurar que no hay SR vivo mientras hablamos
         forceCloseSttCycle()
-
         lastPrompt = text
         val id = System.currentTimeMillis().toString()
         tts.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
@@ -134,24 +175,26 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     }
 
     private fun speakThenReprompt(main: String) {
-        // Cerrar SR, hablar y reabrir mic al final
         speak("$main $REPROMPT") { startListeningWithBeep() }
     }
 
     private fun beepAndHaptic(anchor: View? = null) {
         Haptics.click(this, anchor)
-        try { ToneGenerator(AudioManager.STREAM_MUSIC, 80).startTone(ToneGenerator.TONE_PROP_BEEP, 120) } catch (_: Throwable) {}
+        try {
+            ToneGenerator(AudioManager.STREAM_MUSIC, 80)
+                .startTone(ToneGenerator.TONE_PROP_BEEP, 120)
+        } catch (_: Throwable) {}
     }
 
     private fun stopAudio() {
         try { sr?.cancel() } catch (_: Throwable) {}
         try { sr?.destroy() } catch (_: Throwable) {}
         sr = null
+        try { vosk?.stop() } catch (_: Throwable) {}
         if (isTtsReady) tts.stop()
         cancelSttTimeout()
     }
 
-    // Corta SIEMPRE el ciclo de STT actual (para usar antes de cualquier TTS o navegación)
     private fun forceCloseSttCycle() {
         cancelSttTimeout()
         quickRetryPending = false
@@ -159,11 +202,12 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         try { sr?.cancel() } catch (_: Throwable) {}
         try { sr?.destroy() } catch (_: Throwable) {}
         sr = null
+        try { vosk?.stop() } catch (_: Throwable) {}
     }
 
-    // ---------------- Reconocedor: lifecycle robusto ----------------
+    // ---------------- Reconocedor online (fallback) ----------------
     private fun restartRecognizer() {
-        forceCloseSttCycle() // incluye destroy/cancel
+        forceCloseSttCycle()
         ensureRecognizer()
     }
 
@@ -177,23 +221,16 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             setRecognitionListener(object : RecognitionListener {
                 override fun onReadyForSpeech(params: Bundle?) {
                     statusText.text = "Escuchando…"
-                    android.util.Log.d("STT_DEBUG", "onReadyForSpeech")
                     lastPartial = null
                     scheduleSttTimeout()
                 }
-                override fun onBeginningOfSpeech() {
-                    // si hay voz, damos margen para terminar la palabra/frase
-                    scheduleSttTimeout(2500L)
-                }
-                override fun onRmsChanged(rmsdB: Float) {
-                    android.util.Log.d("STT_DEBUG_RMS", "rms=$rmsdB")
-                }
+                override fun onBeginningOfSpeech() { scheduleSttTimeout(2500L) }
+                override fun onRmsChanged(rmsdB: Float) {}
                 override fun onBufferReceived(buffer: ByteArray?) {}
                 override fun onEndOfSpeech() {}
 
                 override fun onError(error: Int) {
                     cancelSttTimeout()
-                    android.util.Log.d("STT_DEBUG", "onError: $error")
                     if (!quickRetryPending &&
                         (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT)) {
                         quickRetryPending = true
@@ -210,14 +247,10 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                         ?.firstOrNull()
                         ?.trim()
                     lastPartial = partial
-                    android.util.Log.d("STT_DEBUG", "Parcial: $partial")
-
                     if (!partial.isNullOrBlank()) scheduleSttTimeout(1800L)
-
-                    // Si ya detectamos opción, cortar SR antes de hablar
                     matchOption(partial ?: "")?.let {
                         forceCloseSttCycle()
-                        dispatchOption(it) // esto habla y luego reabre el mic con reprompt
+                        dispatchOption(it)
                     }
                 }
 
@@ -225,24 +258,16 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                     cancelSttTimeout()
                     quickRetryPending = false
                     val list = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION) ?: arrayListOf()
-                    android.util.Log.d("STT_DEBUG", "Resultados: ${list.joinToString()}")
-
                     val opt = list.firstNotNullOfOrNull { matchOption(it) }
                     if (opt != null) {
                         forceCloseSttCycle()
                         dispatchOption(opt)
                         return
                     }
-
                     var said = list.firstOrNull().orEmpty().trim()
-                    if (said.isEmpty() && !lastPartial.isNullOrBlank()) {
-                        android.util.Log.d("STT_DEBUG", "Usando parcial como resultado: $lastPartial")
-                        said = lastPartial!!.trim()
-                    }
-                    android.util.Log.d("STT_DEBUG", "Reconocido(final): $said")
+                    if (said.isEmpty() && !lastPartial.isNullOrBlank()) said = lastPartial!!.trim()
                     handleCommand(said)
                 }
-
                 override fun onEvent(eventType: Int, params: Bundle?) {}
             })
         }
@@ -252,10 +277,14 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private fun scheduleSttTimeout(delayMs: Long = STT_TIMEOUT_MS) {
         cancelSttTimeout()
         sttTimeoutRunnable = Runnable {
-            android.util.Log.d("STT_DEBUG", "Timeout manual alcanzado ($delayMs ms).")
-            try { sr?.cancel() } catch (_: Throwable) {}
-            quickRetryPending = false
-            handleUnrecognized()
+            if (useOffline) {
+                vosk?.stop()
+                handleUnrecognized()
+            } else {
+                try { sr?.cancel() } catch (_: Throwable) {}
+                quickRetryPending = false
+                handleUnrecognized()
+            }
         }
         statusText.postDelayed(sttTimeoutRunnable!!, delayMs)
     }
@@ -277,29 +306,42 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-AR")
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "es-AR")
-
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-
-            // Tiempos moderados (afinables)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1800L)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 600L)
         }
-        android.util.Log.d("STT_DEBUG", "listen(): start")
         sr?.startListening(i)
     }
 
     private fun startListeningWithBeep() {
         beepAndHaptic()
-        restartRecognizer()
-        // pequeño delay para no pisar el audio-focus del beep
-        statusText.postDelayed({ listen() }, 200L)
+        if (useOffline) {
+            if (vosk?.isReady() != true) {
+                statusText.text = "Preparando modelo offline…"
+                pendingStartWhenReady = true
+                return
+            }
+            statusText.postDelayed({
+                forceCloseSttCycle()
+                vosk?.start()
+                scheduleSttTimeout(4000L)
+            }, 200L)
+        } else {
+            restartRecognizer()
+            statusText.postDelayed({ listen() }, 200L)
+        }
     }
 
     private fun askRecordPermissionThen(onGranted: () -> Unit) {
-        val ok = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-        if (ok) onGranted() else ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), REQ_RECORD_AUDIO)
+        val ok = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
+                PackageManager.PERMISSION_GRANTED
+        if (ok) onGranted() else ActivityCompat.requestPermissions(
+            this,
+            arrayOf(Manifest.permission.RECORD_AUDIO),
+            REQ_RECORD_AUDIO
+        )
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
@@ -316,12 +358,10 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             cmd.isEmpty() -> { handleUnrecognized(); return }
 
             containsAny(cmd, "salir", "volver", "atras", "atrás") -> {
-                // Cerrar SR y salir
                 speak("Regresando a la pantalla de inicio.") { stopAudio(); finish() }
             }
             containsAny(cmd, "repetir", "de nuevo", "otra vez") -> {
                 failCount = 0
-                // Repetimos el último bloque que habló (intro u opción), y reprompt
                 speak(lastPrompt) { speak(REPROMPT) { startListeningWithBeep() } }
             }
             isOpt(cmd, 1) -> speakDetection()
@@ -401,7 +441,6 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         )
     }
 
-    // ------ Matching robusto Uno/Dos/Tres ------
     private fun normTokens(s: String): List<String> =
         normalize(s).split(" ").filter { it.isNotBlank() }
 

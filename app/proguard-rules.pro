@@ -19,3 +19,6 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Vosk (evitar que R8 lo obfusque/retire)
+-keep class org.vosk.** { *; }

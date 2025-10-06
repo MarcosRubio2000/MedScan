@@ -5,6 +5,13 @@ plugins {
 }
 
 android {
+
+    sourceSets {
+        getByName("main") {
+            assets.srcDirs("src/main/assets")
+        }
+    }
+
     namespace = "com.medscan.medscan"
     compileSdk = 36
 
@@ -40,6 +47,8 @@ android {
 dependencies {
     // ML Kit (usar este y no el play-services-mlkit-text-recognition a la vez)
     implementation("com.google.mlkit:text-recognition:16.0.1")
+
+    implementation("com.alphacephei:vosk-android:0.3.47")
 
     // Core UI
     implementation(libs.androidx.core.ktx)
