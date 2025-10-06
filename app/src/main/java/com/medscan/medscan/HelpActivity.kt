@@ -162,7 +162,9 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     // ---------------- Helpers de audio / TTS ----------------
     private fun speak(text: String, onDone: (() -> Unit)? = null) {
         if (!isTtsReady) return
+        // asegurar que no hay SR vivo mientras hablamos
         forceCloseSttCycle()
+
         lastPrompt = text
         val id = System.currentTimeMillis().toString()
         tts.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
@@ -175,6 +177,7 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     }
 
     private fun speakThenReprompt(main: String) {
+        // Habla y al terminar vuelve a abrir el micrófono
         speak("$main $REPROMPT") { startListeningWithBeep() }
     }
 
@@ -199,9 +202,11 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         cancelSttTimeout()
         quickRetryPending = false
         lastPartial = null
+        // Google SR
         try { sr?.cancel() } catch (_: Throwable) {}
         try { sr?.destroy() } catch (_: Throwable) {}
         sr = null
+        // Vosk
         try { vosk?.stop() } catch (_: Throwable) {}
     }
 
@@ -316,7 +321,9 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     }
 
     private fun startListeningWithBeep() {
+        // feedback auditivo
         beepAndHaptic()
+
         if (useOffline) {
             if (vosk?.isReady() != true) {
                 statusText.text = "Preparando modelo offline…"
@@ -356,7 +363,6 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         val cmd = normalize(raw)
         when {
             cmd.isEmpty() -> { handleUnrecognized(); return }
-
             containsAny(cmd, "salir", "volver", "atras", "atrás") -> {
                 speak("Regresando a la pantalla de inicio.") { stopAudio(); finish() }
             }
