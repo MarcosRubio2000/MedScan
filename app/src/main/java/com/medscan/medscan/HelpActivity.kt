@@ -17,42 +17,56 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import org.json.JSONArray
 import java.text.Normalizer
 import java.util.Locale
 import kotlin.math.abs
 
 class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
-    // --------- TTS ---------
+    // --------- TTS ----------
     private lateinit var tts: TextToSpeech
     private var isTtsReady = false
 
-    // --------- Online SR (fallback) ---------
+    // --------- Online SR (fallback) ----------
     private var sr: SpeechRecognizer? = null
 
-    // --------- UI ---------
+    // --------- UI ----------
     private lateinit var statusText: TextView
     private lateinit var backButton: ImageButton
     private lateinit var option1Row: ConstraintLayout
     private lateinit var option2Row: ConstraintLayout
     private lateinit var option3Row: ConstraintLayout
 
-    // --------- Estado ---------
+    // --------- Estado ----------
     private var failCount = 0
     private var lastPrompt: String = ""
+    private var lastMainPrompt: String = ""     // para “repetir”, sin el reprompt
     private var lastPartial: String? = null
     private var quickRetryPending = false
 
-    // --------- Offline Vosk ---------
+    // --------- Offline Vosk ----------
     private var useOffline = true
     private var vosk: VoskMenuRecognizer? = null
     private var pendingStartWhenReady = false
+    private var voskReady = false
 
-    // --------- Timeouts ---------
+    // Gramática fija de la pantalla de ayuda
+    private val HELP_GRAMMAR = listOf(
+        // opciones
+        "uno", "opcion uno", "opción uno", "modo uno",
+        "dos", "opcion dos", "opción dos", "modo dos",
+        "tres", "opcion tres", "opción tres", "modo tres",
+        // comandos
+        "repetir", "de nuevo", "otra vez",
+        "salir", "volver", "atras", "atrás"
+    )
+
+    // --------- Timeouts ----------
     private val STT_TIMEOUT_MS = 3500L
     private var sttTimeoutRunnable: Runnable? = null
 
-    // --------- Mensajes ---------
+    // --------- Mensajes ----------
     private val REPROMPT = "Diga Uno, Dos, Tres, Repetir o Salir."
 
     companion object {
@@ -76,6 +90,11 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         if (useOffline) {
             vosk = VoskMenuRecognizer(this, object : VoskMenuRecognizer.Callbacks {
                 override fun onReady() {
+                    // Configurar gramática apenas el motor esté listo
+                    try {
+                        vosk?.setGrammar(JSONArray(HELP_GRAMMAR).toString())
+                    } catch (_: Throwable) {}
+                    voskReady = true
                     statusText.text = "Modelo offline listo."
                     if (pendingStartWhenReady) {
                         pendingStartWhenReady = false
@@ -142,7 +161,9 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 Para conocer más información acerca de MedScan, diga Tres.
             """.trimIndent()
 
-            speak("$intro $REPROMPT") { askRecordPermissionThen { startListeningWithBeep() } }
+            speak("$intro $REPROMPT") {
+                askRecordPermissionThen { startListeningWithBeep() }
+            }
         } else {
             statusText.text = "Error al iniciar voz."
         }
@@ -177,7 +198,7 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     }
 
     private fun speakThenReprompt(main: String) {
-        // Habla y al terminar vuelve a abrir el micrófono
+        lastMainPrompt = main
         speak("$main $REPROMPT") { startListeningWithBeep() }
     }
 
@@ -325,13 +346,15 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         beepAndHaptic()
 
         if (useOffline) {
-            if (vosk?.isReady() != true) {
+            if (!voskReady) {
                 statusText.text = "Preparando modelo offline…"
                 pendingStartWhenReady = true
                 return
             }
             statusText.postDelayed({
                 forceCloseSttCycle()
+                // Asegurar gramática por si el wrapper resetea entre sesiones
+                try { vosk?.setGrammar(JSONArray(HELP_GRAMMAR).toString()) } catch (_: Throwable) {}
                 vosk?.start()
                 scheduleSttTimeout(4000L)
             }, 200L)
@@ -368,7 +391,9 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             }
             containsAny(cmd, "repetir", "de nuevo", "otra vez") -> {
                 failCount = 0
-                speak(lastPrompt) { speak(REPROMPT) { startListeningWithBeep() } }
+                speak(lastMainPrompt.ifBlank { lastPrompt }) {
+                    speak(REPROMPT) { startListeningWithBeep() }
+                }
             }
             isOpt(cmd, 1) -> speakDetection()
             isOpt(cmd, 2) -> speakAddMode()
@@ -399,6 +424,7 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             La aplicación comparará lo que dijo con el texto de la foto.
             Si coinciden, guardará el nombre en su lista.
             Si no coinciden, se solicitará que lo repita.
+            Si se dispone de conexión a Internet, el resultado será más preciso.
         """.trimIndent()
         speakThenReprompt(text)
     }
