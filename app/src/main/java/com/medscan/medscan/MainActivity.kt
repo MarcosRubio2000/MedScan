@@ -38,10 +38,25 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private lateinit var tts: TextToSpeech
     private lateinit var repo: MedicineRepository
 
+    // ---- Bienvenida / retorno desde AddDrug ----
+    private var hasWelcomed = false
+    private val STATE_WELCOMED = "state_welcomed"
+
+    private val PREFS_NAME = "medscan_prefs"
+    private val KEY_PENDING_POST_ADD = "pending_post_add"
+
+    private val WELCOME_FULL =
+        "Bienvenido a MedScan. Coloque la caja del medicamento frente a la cámara y presione Detectar"
+    private val WELCOME_SHORT =
+        "Modo DETECCIÓN. Coloque la caja del medicamento frente a la cámara y presione Detectar"
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        // Restaurar si ya se dio la bienvenida en esta instancia (evita repetir por rotación)
+        hasWelcomed = savedInstanceState?.getBoolean(STATE_WELCOMED) ?: false
 
         repo = MedicineRepository(this)
         tts = TextToSpeech(this, this)
@@ -49,9 +64,12 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         // Ir a AddDrug
         binding.addDrugButton.setOnClickListener { v ->
             Haptics.navForward(this, v)
-            if (::tts.isInitialized) {
-                tts.stop()
-            }
+            if (::tts.isInitialized) tts.stop()
+            // marcar que, al volver desde AddDrug, debemos reproducir el mensaje corto
+            getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                .edit()
+                .putBoolean(KEY_PENDING_POST_ADD, true)
+                .apply()
             startActivity(Intent(this, AddDrugActivity::class.java))
         }
 
@@ -60,7 +78,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         else ActivityCompat.requestPermissions(this, REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS)
 
         cameraExecutor = Executors.newSingleThreadExecutor()
-
 
         // Botón de ayuda
         binding.helpButton.setOnClickListener { v ->
@@ -244,6 +261,10 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 override fun onDone(utteranceId: String?) {}
                 override fun onError(utteranceId: String?) {}
             })
+
+            // Bienvenida solo una vez por lanzamiento
+            maybeSpeakWelcome()
+
         } else {
             Log.e(TAG, "Error al inicializar TTS")
         }
@@ -252,12 +273,38 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     override fun onResume() {
         super.onResume()
         startCamera()
+        // Si venimos de AddDrugActivity, reproducir guía corta y limpiar la flag
+        maybeSpeakReturnedFromAddDrug()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(STATE_WELCOMED, hasWelcomed)
     }
 
     override fun onDestroy() {
         super.onDestroy()
         cameraExecutor.shutdown()
         if (::tts.isInitialized) { tts.stop(); tts.shutdown() }
+    }
+
+    // ---- Bienvenida / retorno helpers ----
+    private fun maybeSpeakWelcome() {
+        if (!hasWelcomed && ::tts.isInitialized) {
+            speakOut(WELCOME_FULL)
+            hasWelcomed = true
+        }
+    }
+
+    private fun maybeSpeakReturnedFromAddDrug() {
+        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        val pending = prefs.getBoolean(KEY_PENDING_POST_ADD, false)
+        if (pending && ::tts.isInitialized) {
+            // Ya dimos la bienvenida completa en el primer ingreso,
+            // al volver desde AddDrug solo leer la guía corta.
+            speakOut(WELCOME_SHORT)
+            prefs.edit().putBoolean(KEY_PENDING_POST_ADD, false).apply()
+        }
     }
 
     companion object {

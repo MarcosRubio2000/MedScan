@@ -16,4 +16,14 @@
     <string name="help_opt3_text">Acerca de MedScan</string>
     <string name="help_opt3_cd">Acerca de MedScan. Botón tres.</string>
 
+    <string name="texto_instrucciones">
+    Modo <i>AÑADIR MEDICAMENTO</i>.\n Coloque la caja frente a la cámara y presione DETECTAR.
+    </string>
+
+    <string name="texto_modo_deteccion">
+    Modo <i>DETECCIÓN</i>.\n Coloque la caja frente a la cámara y presione DETECTAR.
+    </string>
+
+
+
 </resources>

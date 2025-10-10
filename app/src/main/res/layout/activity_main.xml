@@ -84,13 +84,14 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="#10DDDDDD"
+        android:layout_marginBottom="75dp"
         android:padding="10dp"
-        android:text="Por favor, escanee su medicamento"
+        android:text="@string/texto_modo_deteccion"
         android:textSize="20sp"
         android:textColor="#80FFFFFF"
         android:textStyle="bold"
         android:gravity="center"
-        android:contentDescription="Instrucción: Por favor, escanee su medicamento"
+        android:contentDescription="Instrucción: Coloque la caja del medicamento frente a la cámara y presione DETECTAR"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
@@ -125,7 +126,7 @@
             android:tint="@null"
             android:elevation="8dp"
             android:foreground="?attr/selectableItemBackground"
-            android:contentDescription="Iniciar detección de medicamento" />
+            android:contentDescription="Botón para iniciar detección de medicamento" />
 
     </LinearLayout>
 

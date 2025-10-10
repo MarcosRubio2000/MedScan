@@ -232,7 +232,7 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 } else {
                     sttStructuralFailCount = 0
                     sttSemanticFailCount = 0
-                    binding.textView.text = "Texto detectado. Diga: El medicamento se llama..."
+                    binding.textView.text = "Texto detectado. Diga a continuación: El medicamento se llama..., seguido del nombre."
                     speak("Texto detectado. Diga a continuación: El medicamento se llama, seguido del nombre.", UTT_PROMPT)
                 }
             }
@@ -265,7 +265,7 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 }
                 override fun onError(utteranceId: String?) {}
             })
-            speak("Enfoque la caja y presione Detectar. Luego diga: El medicamento se llama...", UTT_INIT)
+            speak("Modo AÑADIR MEDICAMENTO. Coloque la caja frente a la cámara y presione Detectar.", UTT_INIT)
         } else Log.e(TAG, "Error al inicializar TTS")
     }
 
@@ -286,19 +286,19 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         }
         currentEngine = chosen
 
-        when (chosen) {
-            Engine.GOOGLE -> {
-                Log.d(TAG, "🎙️ Engine seleccionado: GOOGLE (online) (wifi=${isWifiConnected()}) [attempt#$attemptId]")
-                toastUiEngine("Google")
-                startGoogleListening()
-            }
-            Engine.VOSK -> {
-                Log.d(TAG, "🎙️ Engine seleccionado: VOSK (offline) [attempt#$attemptId]")
-                toastUiEngine("Vosk")
-                startVoskListening()
-            }
-            else -> {} // no se usa
-        }
+        // when (chosen) {
+        //    Engine.GOOGLE -> {
+        //        Log.d(TAG, "🎙️ Engine seleccionado: GOOGLE (online) (wifi=${isWifiConnected()}) [attempt#$attemptId]")
+        //        toastUiEngine("Google")
+        //        startGoogleListening()
+        //    }
+        //    Engine.VOSK -> {
+        //        Log.d(TAG, "🎙️ Engine seleccionado: VOSK (offline) [attempt#$attemptId]")
+        //        toastUiEngine("Vosk")
+        //        startVoskListening()
+        //    }
+        //    else -> {} // no se usa
+        //}
     }
 
     private fun toastUiEngine(name: String) {

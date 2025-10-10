@@ -43,7 +43,7 @@
             android:layout_width="0dp"
             android:layout_height="0dp"
             android:src="@drawable/ic_exit"
-            android:contentDescription="Salir y volver al inicio"
+            android:contentDescription="Salir y volver a pantalla de detección."
             android:alpha="0.8"
             android:scaleType="fitCenter"
             android:padding="30dp"
@@ -65,7 +65,7 @@
         android:background="#10DDDDDD"
         android:padding="10dp"
         android:layout_marginBottom="75dp"
-        android:text="Enfoque la caja y presione DETECTAR. Luego diga el nombre del medicamento."
+        android:text="@string/texto_instrucciones"
         android:textSize="20sp"
         android:textColor="#80FFFFFF"
         android:textStyle="bold"
@@ -75,7 +75,7 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintVertical_bias="0.5"/>
+        app:layout_constraintVertical_bias="0.5" />
 
     <!-- Botón Detectar (reutiliza tus drawables) -->
     <LinearLayout
@@ -105,7 +105,7 @@
             android:tint="@null"
             android:elevation="8dp"
             android:foreground="?attr/selectableItemBackground"
-            android:contentDescription="Iniciar detección de medicamento" />
+            android:contentDescription="Botón para iniciar detección de medicamento" />
     </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
