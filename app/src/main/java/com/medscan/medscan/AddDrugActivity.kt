@@ -282,39 +282,30 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         val chosen = when (forcedEngine) {
             Engine.GOOGLE -> Engine.GOOGLE
             Engine.VOSK -> Engine.VOSK
-            Engine.AUTO -> if (isWifiConnected()) Engine.GOOGLE else Engine.VOSK
+            Engine.AUTO -> if (hasInternet()) Engine.GOOGLE else Engine.VOSK
         }
         currentEngine = chosen
 
-        // when (chosen) {
-        //    Engine.GOOGLE -> {
-        //        Log.d(TAG, "🎙️ Engine seleccionado: GOOGLE (online) (wifi=${isWifiConnected()}) [attempt#$attemptId]")
-        //        toastUiEngine("Google")
-        //        startGoogleListening()
-        //    }
-        //    Engine.VOSK -> {
-        //        Log.d(TAG, "🎙️ Engine seleccionado: VOSK (offline) [attempt#$attemptId]")
-        //        toastUiEngine("Vosk")
-        //        startVoskListening()
-        //    }
-        //    else -> {} // no se usa
-        //}
-    }
-
-    private fun toastUiEngine(name: String) {
+        // Mostrar solo “Escuchando...”
         runOnUiThread {
-            val base = binding.textView.text?.toString() ?: ""
-            binding.textView.text = "$base\n[Engine: $name]"
-            Toast.makeText(this, "Usando $name", Toast.LENGTH_SHORT).show()
+            binding.textView.text = "Escuchando..."
+        }
+
+        when (chosen) {
+            Engine.GOOGLE -> startGoogleListening()
+            Engine.VOSK -> startVoskListening()
+            else -> {} // por completitud (para cubrir el caso AUTO)
         }
     }
 
-    private fun isWifiConnected(): Boolean {
+    private fun hasInternet(): Boolean {
         val cm = getSystemService(ConnectivityManager::class.java)
         val nw = cm.activeNetwork ?: return false
         val caps = cm.getNetworkCapabilities(nw) ?: return false
-        return caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) &&
-                caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        return (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+                || caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
+                || caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET))
+                && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 
     // ---- Google STT ----

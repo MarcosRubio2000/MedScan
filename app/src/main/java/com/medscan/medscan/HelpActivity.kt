@@ -95,7 +95,6 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                         vosk?.setGrammar(JSONArray(HELP_GRAMMAR).toString())
                     } catch (_: Throwable) {}
                     voskReady = true
-                    statusText.text = "Modelo offline listo."
                     if (pendingStartWhenReady) {
                         pendingStartWhenReady = false
                         startListeningWithBeep()
