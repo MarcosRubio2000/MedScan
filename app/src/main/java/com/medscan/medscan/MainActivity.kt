@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Bundle as AndroidBundle
+import android.os.SystemClock
 import android.speech.tts.TextToSpeech
 import android.util.Log
 import android.util.Size
@@ -21,7 +22,11 @@ import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.medscan.medscan.data.MedicineRepository
 import com.medscan.medscan.databinding.ActivityMainBinding
+import com.medscan.medscan.db.AppDatabase
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -60,6 +65,18 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
         repo = MedicineRepository(this)
         tts = TextToSpeech(this, this)
+
+        // ---- PREWARM OCR: carga modelo on-device para evitar cold start ----
+        prewarmOcr()
+
+        // ---- Espera de DB: deshabilitar "Detectar" hasta que se inserten fármacos ----
+        binding.detectionButton.isEnabled = false
+        binding.detectionButton.alpha = 0.5f
+        lifecycleScope.launch {
+            waitDbReady()
+            binding.detectionButton.isEnabled = true
+            binding.detectionButton.alpha = 1f
+        }
 
         // Ir a AddDrug
         binding.addDrugButton.setOnClickListener { v ->
@@ -148,17 +165,17 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         recognizer.process(inputImage)
             .addOnSuccessListener { visionText ->
                 lifecycleScope.launch {
+                    // ===== Paso 0: recolectar líneas OCR =====
                     data class LineInfo(val text: String, val rect: android.graphics.Rect)
-                    val lines = mutableListOf<LineInfo>()
+                    val rawLines = mutableListOf<LineInfo>()
                     for (block in visionText.textBlocks) {
                         for (line in block.lines) {
-                            line.boundingBox?.let { lines.add(LineInfo(line.text, it)) }
+                            line.boundingBox?.let { rawLines.add(LineInfo(line.text, it)) }
                         }
                     }
+                    rawLines.sortBy { it.rect.top }
 
-                    val results = LinkedHashMap<String, String?>()
-                    val usedDoseRects = mutableSetOf<android.graphics.Rect>()
-
+                    // ===== Helpers geométricos =====
                     fun horizontalOverlap(a: android.graphics.Rect, b: android.graphics.Rect): Int {
                         val left = maxOf(a.left, b.left)
                         val right = minOf(a.right, b.right)
@@ -169,7 +186,13 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                         val by = (b.top + b.bottom) / 2
                         return kotlin.math.abs(ay - by)
                     }
-                    fun findNearbyDoseFor(base: LineInfo): Pair<String, android.graphics.Rect>? {
+
+                    // ===== Buscar dosis vecina (con control de reutilización) =====
+                    fun findNearbyDoseFor(
+                        base: LineInfo,
+                        lines: List<LineInfo>,
+                        usedDoseRects: MutableSet<android.graphics.Rect>
+                    ): Pair<String, android.graphics.Rect>? {
                         val baseHeight = base.rect.height()
                         val maxDy = (baseHeight * 0.9f).toInt()
                         var best: Pair<String, android.graphics.Rect>? = null
@@ -183,30 +206,59 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                             val overlap = horizontalOverlap(base.rect, other.rect)
                             val minOverlap = (minOf(base.rect.width(), other.rect.width()) * 0.5f).toInt()
                             if (overlap < minOverlap) continue
+                            if (usedDoseRects.any { it == other.rect }) continue
                             val doses = repo.extractDosesPublic(other.text)
                             if (doses.isEmpty()) continue
-                            if (usedDoseRects.any { it == other.rect }) continue
                             val candidate = doses.first()
                             if (dy < bestScore) { best = candidate to other.rect; bestScore = dy }
                         }
                         return best
                     }
 
-                    lines.sortBy { it.rect.top }
-                    for (li in lines) {
-                        val drugName = repo.findBestDrugName(li.text) ?: continue
-                        if (results.keys.any { it.equals(drugName, ignoreCase = true) }) continue
-                        val sameLineDoses = repo.extractDosesPublic(li.text)
-                        if (sameLineDoses.isNotEmpty()) {
-                            results[drugName] = sameLineDoses.first()
-                            usedDoseRects.add(li.rect)
+                    // ===== Paso 1: anotar cada línea con (nombre, dosis) =====
+                    data class Annot(val line: LineInfo, val drugName: String?, val doses: List<String>)
+                    val annotated: List<Annot> = rawLines.map { li ->
+                        val dn = repo.findBestDrugName(li.text)
+                        val ds = repo.extractDosesPublic(li.text)
+                        Annot(li, dn, ds)
+                    }
+
+                    val results = LinkedHashMap<String, String?>()
+                    val usedDoseRects = mutableSetOf<android.graphics.Rect>()
+
+                    fun hasKeyCI(map: Map<String, *>, key: String) =
+                        map.keys.any { it.equals(key, ignoreCase = true) }
+
+                    // Cantidad REAL de líneas que tienen dosis (cota para no inventar más)
+                    val totalDoseRects = annotated.count { it.doses.isNotEmpty() }
+
+                    // ===== Paso 2 (PRIORIDAD): nombre + dosis EN LA MISMA LÍNEA =====
+                    for (a in annotated) {
+                        val dn = a.drugName ?: continue
+                        if (hasKeyCI(results, dn)) continue
+                        if (a.doses.isNotEmpty()) {
+                            results[dn] = a.doses.first()
+                            usedDoseRects.add(a.line.rect) // esta línea ya aportó su dosis
+                        }
+                    }
+
+                    // ===== Paso 3: nombres SIN dosis propia → buscar dosis CERCANA disponible =====
+                    for (a in annotated) {
+                        val dn = a.drugName ?: continue
+                        if (hasKeyCI(results, dn)) continue
+
+                        // Si ya usé todas las líneas con dosis, no asigno nada (evita “inventar”)
+                        if (usedDoseRects.size >= totalDoseRects) {
+                            results[dn] = null
                             continue
                         }
-                        val near = findNearbyDoseFor(li)
-                        results[drugName] = near?.first
+
+                        val near = findNearbyDoseFor(a.line, rawLines, usedDoseRects)
+                        results[dn] = near?.first
                         near?.second?.let { usedDoseRects.add(it) }
                     }
 
+                    // ===== Salida =====
                     if (results.isNotEmpty()) {
                         val spoken = results.entries.joinToString("\n") { (drug, dose) ->
                             if (dose != null) "$drug $dose" else drug
@@ -255,14 +307,12 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             tts.setSpeechRate(1.10f)
             tts.setPitch(1.0f)
 
-            // Listener opcional (ya sin actualizar íconos)
             tts.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) {}
                 override fun onDone(utteranceId: String?) {}
                 override fun onError(utteranceId: String?) {}
             })
 
-            // Bienvenida solo una vez por lanzamiento
             maybeSpeakWelcome()
 
         } else {
@@ -273,7 +323,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     override fun onResume() {
         super.onResume()
         startCamera()
-        // Si venimos de AddDrugActivity, reproducir guía corta y limpiar la flag
         maybeSpeakReturnedFromAddDrug()
     }
 
@@ -300,11 +349,32 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
         val pending = prefs.getBoolean(KEY_PENDING_POST_ADD, false)
         if (pending && ::tts.isInitialized) {
-            // Ya dimos la bienvenida completa en el primer ingreso,
-            // al volver desde AddDrug solo leer la guía corta.
             speakOut(WELCOME_SHORT)
             prefs.edit().putBoolean(KEY_PENDING_POST_ADD, false).apply()
         }
+    }
+
+    // ---- Helpers nuevos: PREWARM OCR + esperar DB ----
+    private fun prewarmOcr() {
+        // Crea un bitmap dummy y ejecuta una pasada del OCR para cargar el modelo en memoria.
+        val bmp = android.graphics.Bitmap.createBitmap(320, 320, android.graphics.Bitmap.Config.ARGB_8888)
+        val img = InputImage.fromBitmap(bmp, 0)
+        recognizer.process(img).addOnCompleteListener {
+            // No usamos el resultado; solo evitamos el "cold start" en la primera detección real.
+        }
+    }
+
+    private suspend fun waitDbReady(timeoutMs: Long = 6000) {
+        val db = AppDatabase.get(applicationContext)
+        val t0 = SystemClock.elapsedRealtime()
+        while (SystemClock.elapsedRealtime() - t0 < timeoutMs) {
+            val ready = withContext(Dispatchers.IO) {
+                db.medicineDao().getAllDrugs().isNotEmpty()
+            }
+            if (ready) return
+            delay(150)
+        }
+        Log.w(TAG, "Tiempo de espera de DB agotado; habilitando detección de todos modos.")
     }
 
     companion object {
