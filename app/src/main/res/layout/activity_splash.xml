@@ -52,7 +52,7 @@
         android:layout_marginEnd="8dp"
         android:layout_marginTop="10dp"
         android:fontFamily="@font/fuentemedscan"
-        android:text="Versión 1.36"
+        android:text="Versión 1.37"
         android:textColor="#80FFFFFF"
         android:textSize="12sp"
         android:textStyle="bold" />
