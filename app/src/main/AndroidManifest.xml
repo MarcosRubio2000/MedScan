@@ -1,16 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+<manifest
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- ===========================
+         Hardware / Features
+         =========================== -->
+    <!-- Cualquier cámara disponible (trasera o delantera) -->
     <uses-feature android:name="android.hardware.camera.any" />
 
+    <!-- ===========================
+         Permissions
+         =========================== -->
+    <!-- Vibración para feedback háptico -->
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Audio del micrófono (para STT) -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Cámara (para captura con CameraX) -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Escritura en almacenamiento externo (solo <= API 28) -->
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
 
+    <!-- ===========================
+         Application
+         =========================== -->
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -21,28 +36,36 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.MedScan"
         tools:targetApi="31">
+
+        <!-- Pantalla de ayuda -->
         <activity
             android:name=".HelpActivity"
             android:exported="false"
             android:theme="@style/Theme.MedScan" />
+
+        <!-- Alta de medicamentos manual -->
         <activity
             android:name=".AddDrugActivity"
             android:exported="false"
             android:theme="@style/Theme.MedScan" />
+
+        <!-- Splash / Launcher (entrada principal de la app) -->
         <activity
             android:name=".SplashActivity"
             android:exported="true"
             android:theme="@style/SplashTheme">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity> <!-- Tu actividad principal -->
+        </activity>
+
+        <!-- Actividad principal -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:theme="@style/Theme.MedScan" />
+
     </application>
 
 </manifest>

@@ -34,25 +34,44 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import kotlin.math.max
 
+/**
+ * AddDrugActivity
+ * ---------------
+ * Pantalla para añadir un medicamento a la base local:
+ * - Toma texto de la caja por OCR (ML Kit on-device).
+ * - Pide al usuario que diga “El medicamento se llama …” (STT).
+ * - Motor de voz híbrido: Google (online) o Vosk (offline), con forzado manual.
+ * - Valida que lo hablado matchee con el texto del OCR y guarda en Room.
+ *
+ */
 @ExperimentalGetImage
 class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
+    // ---------------------------------------------------------------------
+    // View / Cámara / OCR
+    // ---------------------------------------------------------------------
     private lateinit var binding: ActivityAddDrugBinding
     private lateinit var cameraExecutor: ExecutorService
     private var imageAnalysis: ImageAnalysis? = null
     private var camera: Camera? = null
 
-    // OCR
+    // OCR (instancia perezosa de ML Kit)
     private val recognizer by lazy { TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }
 
+    // ---------------------------------------------------------------------
     // TTS
+    // ---------------------------------------------------------------------
     private lateinit var tts: TextToSpeech
 
-    // STT Google (online)
+    // ---------------------------------------------------------------------
+    // STT: Google (online)
+    // ---------------------------------------------------------------------
     private var stt: SpeechRecognizer? = null
     private var lastPartialSaid: String? = null
 
-    // STT Vosk (offline)
+    // ---------------------------------------------------------------------
+    // STT: Vosk (offline)
+    // ---------------------------------------------------------------------
     private var vosk: VoskMenuRecognizer? = null
     private var voskReady = false
     private var waitingForVosk = false
@@ -60,50 +79,59 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private var listenTimeout: Runnable? = null
     private var triggerHeard = false
 
-    // Repo
+    // ---------------------------------------------------------------------
+    // Repositorio / Estado
+    // ---------------------------------------------------------------------
     private lateinit var repo: MedicineRepository
 
-    // Estado
     private var lastOcrText: String = ""
     private var sttStructuralFailCount = 0
     private val MAX_STRUCTURAL_FAILS = 3
     private var sttSemanticFailCount = 0
     private val MAX_SEMANTIC_FAILS = 3
 
-    // TTS IDs
+    // ---------------------------------------------------------------------
+    // Constantes / IDs TTS / Trigger STT
+    // ---------------------------------------------------------------------
     private val UTT_INIT   = "UTT_INIT"
     private val UTT_PROMPT = "UTT_PROMPT"
 
-    // Trigger
     private val TRIGGER_REGEX = Regex(
         """(?:^|\s)(?:el\s+)?(?:medicamento(?:s)?\s+)?se\s+(?:llama|yama|shama)\s+(.+)$""",
         RegexOption.IGNORE_CASE
     )
     private val TRIGGER_WORDS = listOf("se llama", "se yama", "se shama")
 
-    // Ventanas Vosk
+    // Ventanas Vosk (pre y post trigger)
     private val PRE_TRIGGER_MAX_MS = 7000L
     private val POST_TRIGGER_TAIL_MS = 2500L
 
-    // --- Selección/forzado de motor ---
+    // ---------------------------------------------------------------------
+    // Selección/forzado de motor de STT
+    // ---------------------------------------------------------------------
     private enum class Engine { AUTO, GOOGLE, VOSK }
     private var forcedEngine: Engine = Engine.AUTO
     private var currentEngine: Engine? = null
     private var attemptId: Long = 0
 
+    // ---------------------------------------------------------------------
+    // Ciclo de vida
+    // ---------------------------------------------------------------------
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityAddDrugBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        // Repo + TTS
         repo = MedicineRepository(this)
         tts = TextToSpeech(this, this)
 
+        // Permisos / Cámara
         if (allPermissionsGranted()) startCamera()
         else ActivityCompat.requestPermissions(this, REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS)
-
         cameraExecutor = Executors.newSingleThreadExecutor()
 
+        // Botón: Detectar (toma un frame y corre OCR)
         binding.detectionButton.setOnClickListener { v ->
             Haptics.detect(this, v)
             imageAnalysis?.setAnalyzer(cameraExecutor) { image -> processImage(image) }
@@ -126,6 +154,7 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             true
         }
 
+        // Linterna (toggle)
         binding.flashButton.setOnClickListener { v ->
             val cam = camera ?: return@setOnClickListener
             if (!cam.cameraInfo.hasFlashUnit()) {
@@ -137,13 +166,14 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             if (!isOn) Haptics.flashOn(this, v) else Haptics.flashOff(this, v)
         }
 
+        // Salida
         binding.exitButton.setOnClickListener { v ->
             Haptics.navBack(this, v)
             stopAudio()
             finish()
         }
 
-        // Vosk
+        // Inicializa Vosk (offline)
         vosk = VoskMenuRecognizer(this, object : VoskMenuRecognizer.Callbacks {
             override fun onReady() { voskReady = true }
             override fun onListening() { runOnUiThread { binding.textView.text = "Escuchando..." } }
@@ -175,6 +205,9 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         stopAudio()
     }
 
+    // ---------------------------------------------------------------------
+    // Audio/TTS/STT cleanup
+    // ---------------------------------------------------------------------
     private fun stopAudio() {
         try { stt?.cancel() } catch (_: Exception) {}
         try { stt?.destroy() } catch (_: Exception) {}
@@ -189,7 +222,9 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         if (::tts.isInitialized) { try { tts.stop() } catch (_: Throwable) {} }
     }
 
-    // ---- Cámara / OCR ----
+    // ---------------------------------------------------------------------
+    // Cámara / OCR (ML Kit)
+    // ---------------------------------------------------------------------
     private fun startCamera() {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
         cameraProviderFuture.addListener({
@@ -247,7 +282,9 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             }
     }
 
-    // ---- TTS ----
+    // ---------------------------------------------------------------------
+    // TTS
+    // ---------------------------------------------------------------------
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
             val res = tts.setLanguage(Locale("es", "AR"))
@@ -274,7 +311,9 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         tts.speak(text, TextToSpeech.QUEUE_FLUSH, params, id)
     }
 
-    // ---- Híbrido con forzado y logging explícito ----
+    // ---------------------------------------------------------------------
+    // STT híbrido (elección de motor + arranque)
+    // ---------------------------------------------------------------------
     private fun startHybridListening() {
         if (lastOcrText.isBlank()) return
         attemptId++
@@ -286,15 +325,12 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         }
         currentEngine = chosen
 
-        // Mostrar solo “Escuchando...”
-        runOnUiThread {
-            binding.textView.text = "Escuchando..."
-        }
+        runOnUiThread { binding.textView.text = "Escuchando..." }
 
         when (chosen) {
             Engine.GOOGLE -> startGoogleListening()
             Engine.VOSK -> startVoskListening()
-            else -> {} // por completitud (para cubrir el caso AUTO)
+            else -> {} // Por completitud (AUTO resuelto arriba)
         }
     }
 
@@ -308,7 +344,9 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 
-    // ---- Google STT ----
+    // ---------------------------------------------------------------------
+    // Google STT (online)
+    // ---------------------------------------------------------------------
     private fun startGoogleListening() {
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
             Log.w(TAG, "Google STT no disponible -> fallback Vosk [attempt#$attemptId]")
@@ -341,7 +379,6 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                         if (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
                             handleStructuralFailAndMaybeStop(); return
                         }
-                        // otros errores → reintentar con Vosk (log explícito)
                         Log.w(TAG, "FALLBACK → VOSK por error Google($error) [attempt#$attemptId]")
                         startVoskListening()
                     }
@@ -404,7 +441,9 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         }, 130)
     }
 
-    // ---- Vosk STT ----
+    // ---------------------------------------------------------------------
+    // Vosk STT (offline)
+    // ---------------------------------------------------------------------
     private fun startVoskListening() {
         if (lastOcrText.isBlank()) return
         if (!voskReady) {
@@ -479,7 +518,9 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         handleSpokenName(nameRaw)
     }
 
-    // ---- Timeouts Vosk ----
+    // ---------------------------------------------------------------------
+    // Timeouts Vosk (ventanas de escucha)
+    // ---------------------------------------------------------------------
     private fun scheduleListenTimeout(ms: Long) {
         cancelListenTimeout()
         listenTimeout = Runnable {
@@ -498,7 +539,9 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         listenTimeout = null
     }
 
-    // ---- Beep/Haptic (1 = Vosk, 2 = Google) ----
+    // ---------------------------------------------------------------------
+    // Beep/Haptic (1 = Vosk, 2 = Google)
+    // ---------------------------------------------------------------------
     private fun beep(count: Int) {
         Haptics.click(this, null)
         val tg = try {
@@ -516,7 +559,9 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         }
     }
 
-    // ---- Guardado ----
+    // ---------------------------------------------------------------------
+    // Guardado / manejo de fallos de reconocimiento
+    // ---------------------------------------------------------------------
     private fun handleStructuralFailAndMaybeStop() {
         sttStructuralFailCount++
         try { stt?.cancel() } catch (_: Exception) {}
@@ -577,7 +622,9 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         }
     }
 
-    // ---- Matching seguro (solo OCR tokens) ----
+    // ---------------------------------------------------------------------
+    // Matching seguro (solo tokens OCR) + fonética ES
+    // ---------------------------------------------------------------------
     private data class OcrFuzzy(val ok: Boolean, val ocrToken: String?, val score: Float)
 
     private fun ocrMatchesSpokenSafe(spoken: String, ocrText: String): OcrFuzzy {
@@ -600,7 +647,6 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         else OcrFuzzy(false, null, bestScore)
     }
 
-    // ---- Fonética ES ----
     private fun spanishPhoneticKey(s: String): String {
         var t = Normalizer.normalize(s.lowercase(Locale("es","AR")), Normalizer.Form.NFD)
             .replace("\\p{Mn}+".toRegex(), "")
@@ -631,7 +677,9 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         return if (best != null) best!! to bestSim else null
     }
 
-    // ---- Utils ----
+    // ---------------------------------------------------------------------
+    // Utils
+    // ---------------------------------------------------------------------
     private fun hasMeaningfulOcr(raw: String): Boolean {
         val norm = normalizeLettersOnly(raw)
         if (norm.isBlank()) return false
@@ -685,6 +733,9 @@ class AddDrugActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private fun allPermissionsGranted(): Boolean =
         REQUIRED_PERMISSIONS.all { ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED }
 
+    // ---------------------------------------------------------------------
+    // Companion / permisos
+    // ---------------------------------------------------------------------
     companion object {
         private const val TAG = "AddDrugActivity"
         private const val STT_TAG = "STT_RESULT"

@@ -22,36 +22,57 @@ import java.text.Normalizer
 import java.util.Locale
 import kotlin.math.abs
 
+/**
+ * HelpActivity
+ * ------------
+ * Pantalla de ayuda con guía por voz y selección por comandos hablados.
+ *
+ * - Muestra 3 opciones (Detección, Añadir medicamento, Acerca de).
+ * - TTS para leer instrucciones y reprompts.
+ * - Reconocimiento de voz offline (Vosk) con gramática fija; fallback online (Google SR).
+ * - Beep + hápticos como feedback al iniciar escucha.
+ *
+ */
 class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
-    // --------- TTS ----------
+    // =========================================================
+    // TTS
+    // =========================================================
     private lateinit var tts: TextToSpeech
     private var isTtsReady = false
 
-    // --------- Online SR (fallback) ----------
+    // =========================================================
+    // Reconocimiento online (fallback)
+    // =========================================================
     private var sr: SpeechRecognizer? = null
 
-    // --------- UI ----------
+    // =========================================================
+    // UI
+    // =========================================================
     private lateinit var statusText: TextView
     private lateinit var backButton: ImageButton
     private lateinit var option1Row: ConstraintLayout
     private lateinit var option2Row: ConstraintLayout
     private lateinit var option3Row: ConstraintLayout
 
-    // --------- Estado ----------
+    // =========================================================
+    // Estado local
+    // =========================================================
     private var failCount = 0
     private var lastPrompt: String = ""
     private var lastMainPrompt: String = ""     // para “repetir”, sin el reprompt
     private var lastPartial: String? = null
     private var quickRetryPending = false
 
-    // --------- Offline Vosk ----------
+    // =========================================================
+    // Reconocimiento offline (Vosk)
+    // =========================================================
     private var useOffline = true
     private var vosk: VoskMenuRecognizer? = null
     private var pendingStartWhenReady = false
     private var voskReady = false
 
-    // Gramática fija de la pantalla de ayuda
+    /** Gramática fija para esta pantalla (palabras esperadas). */
     private val HELP_GRAMMAR = listOf(
         // opciones
         "uno", "opcion uno", "opción uno", "modo uno",
@@ -62,31 +83,36 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         "salir", "volver", "atras", "atrás"
     )
 
-    // --------- Timeouts ----------
+    // =========================================================
+    // Timeouts / Mensajes
+    // =========================================================
     private val STT_TIMEOUT_MS = 3500L
     private var sttTimeoutRunnable: Runnable? = null
 
-    // --------- Mensajes ----------
     private val REPROMPT = "Diga Uno, Dos, Tres, Repetir o Salir."
 
     companion object {
         private const val REQ_RECORD_AUDIO = 9101
     }
 
-    // ---------------- Ciclo ----------------
+    // =========================================================
+    // Ciclo de vida
+    // =========================================================
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_help)
 
+        // ---- Bind UI ----
         statusText = findViewById(R.id.statusText)
         backButton = findViewById(R.id.backButton)
         option1Row = findViewById(R.id.option1Row)
         option2Row = findViewById(R.id.option2Row)
         option3Row = findViewById(R.id.option3Row)
 
+        // ---- TTS ----
         tts = TextToSpeech(this, this)
 
-        // --- Preparar Vosk (offline) ---
+        // ---- Vosk (offline) ----
         if (useOffline) {
             vosk = VoskMenuRecognizer(this, object : VoskMenuRecognizer.Callbacks {
                 override fun onReady() {
@@ -125,6 +151,7 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             vosk?.prepare() // asíncrono
         }
 
+        // ---- Navegación / Clicks ----
         backButton.setOnClickListener { v ->
             Haptics.navBack(this, v)
             stopAudio(); finish()
@@ -179,7 +206,10 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         try { vosk?.destroy() } catch (_: Throwable) {}
     }
 
-    // ---------------- Helpers de audio / TTS ----------------
+    // =========================================================
+    // TTS helpers
+    // =========================================================
+    /** Habla `text` y al terminar ejecuta `onDone` (opcional). */
     private fun speak(text: String, onDone: (() -> Unit)? = null) {
         if (!isTtsReady) return
         // asegurar que no hay SR vivo mientras hablamos
@@ -196,11 +226,13 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         tts.speak(text, TextToSpeech.QUEUE_FLUSH, params, id)
     }
 
+    /** Habla `main` y luego el reprompt fijo; al final, abre escucha. */
     private fun speakThenReprompt(main: String) {
         lastMainPrompt = main
         speak("$main $REPROMPT") { startListeningWithBeep() }
     }
 
+    /** Beep + háptico de feedback antes de escuchar. */
     private fun beepAndHaptic(anchor: View? = null) {
         Haptics.click(this, anchor)
         try {
@@ -209,6 +241,7 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         } catch (_: Throwable) {}
     }
 
+    /** Detiene TTS y SR (online/offline), limpia timeouts. */
     private fun stopAudio() {
         try { sr?.cancel() } catch (_: Throwable) {}
         try { sr?.destroy() } catch (_: Throwable) {}
@@ -218,6 +251,7 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         cancelSttTimeout()
     }
 
+    /** Cierra cualquier ciclo de reconocimiento activo (Google o Vosk). */
     private fun forceCloseSttCycle() {
         cancelSttTimeout()
         quickRetryPending = false
@@ -230,7 +264,9 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         try { vosk?.stop() } catch (_: Throwable) {}
     }
 
-    // ---------------- Reconocedor online (fallback) ----------------
+    // =========================================================
+    // Reconocedor online (fallback Google SR)
+    // =========================================================
     private fun restartRecognizer() {
         forceCloseSttCycle()
         ensureRecognizer()
@@ -298,7 +334,9 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         }
     }
 
-    // ---------------- Timeout manual ----------------
+    // =========================================================
+    // Timeouts manuales para sesiones de SR
+    // =========================================================
     private fun scheduleSttTimeout(delayMs: Long = STT_TIMEOUT_MS) {
         cancelSttTimeout()
         sttTimeoutRunnable = Runnable {
@@ -319,27 +357,10 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         sttTimeoutRunnable = null
     }
 
-    // ---------------- Abrir el mic ----------------
-    private fun listen() {
-        cancelSttTimeout()
-        ensureRecognizer()
-        try { sr?.cancel() } catch (_: Throwable) {}
-        lastPartial = null
-        quickRetryPending = false
-
-        val i = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-AR")
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "es-AR")
-            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
-            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1800L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 600L)
-        }
-        sr?.startListening(i)
-    }
-
+    // =========================================================
+    // Abrir micro y escuchar
+    // =========================================================
+    /** Inicio genérico con beep/haptic y arranque de Vosk o Google SR. */
     private fun startListeningWithBeep() {
         // feedback auditivo
         beepAndHaptic()
@@ -363,6 +384,30 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         }
     }
 
+    /** Construye intent y arranca Google SR. */
+    private fun listen() {
+        cancelSttTimeout()
+        ensureRecognizer()
+        try { sr?.cancel() } catch (_: Throwable) {}
+        lastPartial = null
+        quickRetryPending = false
+
+        val i = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-AR")
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "es-AR")
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1800L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 600L)
+        }
+        sr?.startListening(i)
+    }
+
+    // =========================================================
+    // Permisos
+    // =========================================================
     private fun askRecordPermissionThen(onGranted: () -> Unit) {
         val ok = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
                 PackageManager.PERMISSION_GRANTED
@@ -380,7 +425,10 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         }
     }
 
-    // ---------------- Comandos y respuestas ----------------
+    // =========================================================
+    // Comandos y respuestas
+    // =========================================================
+    /** Evalúa el comando hablado normalizado y despacha acción. */
     private fun handleCommand(raw: String) {
         val cmd = normalize(raw)
         when {
@@ -401,6 +449,7 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         }
     }
 
+    /** Opción 1: descripción modo detección. */
     private fun speakDetection() {
         failCount = 0
         val text = """
@@ -413,6 +462,7 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         speakThenReprompt(text)
     }
 
+    /** Opción 2: descripción modo añadir medicamento. */
     private fun speakAddMode() {
         failCount = 0
         val text = """
@@ -428,6 +478,7 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         speakThenReprompt(text)
     }
 
+    /** Opción 3: “Acerca de”. */
     private fun speakAbout() {
         failCount = 0
         val text = """
@@ -437,6 +488,7 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         speakThenReprompt(text)
     }
 
+    /** Manejo del caso no reconocido, con reintentos y salida. */
     private fun handleUnrecognized() {
         failCount++
         if (failCount >= 3) {
@@ -451,7 +503,10 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         }
     }
 
-    // ---------------- Utils ----------------
+    // =========================================================
+    // Utils de normalización y matching flexible
+    // =========================================================
+    /** Normaliza texto (lowercase ES, sin diacríticos/símbolos, espacios colapsados). */
     private fun normalize(s: String): String {
         val lowered = s.lowercase(Locale("es", "AR"))
         val n = Normalizer.normalize(lowered, Normalizer.Form.NFD)
@@ -463,6 +518,7 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
     private fun containsAny(text: String, vararg options: String) = options.any { text.contains(it) }
 
+    /** Chequea si `cmd` refiere a la opción `n` (tanto en dígito como palabra). */
     private fun isOpt(cmd: String, n: Int): Boolean {
         val s = n.toString()
         return containsAny(
@@ -475,6 +531,7 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private fun normTokens(s: String): List<String> =
         normalize(s).split(" ").filter { it.isNotBlank() }
 
+    /** Similaridad relajada (<=1 edición) para variantes de pronunciación. */
     private fun near(word: String, target: String): Boolean {
         if (word == target) return true
         if (abs(word.length - target.length) > 1) return false
@@ -492,6 +549,7 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         return edits <= 1
     }
 
+    /** Intenta mapear la frase a una opción {1,2,3} usando tokens y regex auxiliares. */
     private fun matchOption(raw: String): Int? {
         val cmd = normalize(raw)
         if (cmd.isEmpty()) return null
@@ -523,6 +581,7 @@ class HelpActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         return null
     }
 
+    /** Despacha a la rutina de cada opción. */
     private fun dispatchOption(opt: Int) {
         when (opt) {
             1 -> speakDetection()

@@ -8,11 +8,28 @@ import kotlinx.coroutines.withContext
 import java.text.Normalizer
 import kotlin.math.min
 
+/**
+ * Par (nombre de fármaco, dosis) que se devuelve al resolver coincidencias.
+ */
 data class FoundPair(val drug: String, val dose: String?)
+
+/**
+ * Repositorio de medicamentos:
+ * - Acceso a Room (DAO) para búsquedas normalizadas (LIKE).
+ * - Heurísticas de OCR: normalización, fix numérico y extracción de dosis.
+ * - Fuzzy matching liviano (Levenshtein) como respaldo cuando no hay LIKE.
+ */
 
 class MedicineRepository(context: Context) {
 
-    // Palabras muy comunes en cajas que NO deben accionar fuzzy
+    // ----------------------------------------------------------------------
+    // Configuración / DAO
+    // ----------------------------------------------------------------------
+
+    /**
+     * Palabras frecuentes en cajas/packaging que pueden confundir el fuzzy.
+     * No deben disparar coincidencias de marca/fármaco.
+     */
     private val PACKAGING_STOPWORDS = setOf(
         "ARGENTINA", "INDUSTRIA", "COMPRIMIDOS", "COMPRIMIDO",
         "TABLETAS", "TABLETA", "CAPSULAS", "CAPSULA",
@@ -20,14 +37,17 @@ class MedicineRepository(context: Context) {
         "LABORATORIO", "LAB", "CONTENIDO", "NETO", "MG", "G", "MCG", "µG"
     )
 
-
+    /** DAO de acceso a la tabla `drugs`. */
     private val dao = AppDatabase.get(context).medicineDao()
 
-    /* =======================
-       Normalización / OCR fix
-       ======================= */
+    // ----------------------------------------------------------------------
+    // Normalización / Fix de OCR (NO altera letras↔números en nombres)
+    // ----------------------------------------------------------------------
 
-    // ⚠️ NUEVO: NO tocar letras → números. Solo normalizamos diacríticos, símbolos y espacios.
+    /**
+     * Normaliza manteniendo letras y dígitos; elimina diacríticos y símbolos.
+     * No convierte letras a números en nombres (evita falsos positivos).
+     */
     private fun normalizeLettersOnly(s: String): String =
         Normalizer.normalize(s, Normalizer.Form.NFD)
             .replace("\\p{Mn}+".toRegex(), "")             // quita acentos
@@ -36,10 +56,12 @@ class MedicineRepository(context: Context) {
             .trim()
             .uppercase()
 
-    // (Opcional) Fixups SOLO en números, para leer dosis (p.ej. 0↔O en tokens numéricos)
+    /**
+     * Fix numérico selectivo para detección de dosis:
+     * - Aplica reemplazos típicos de OCR (O→0, l/I→1, B→8, S→5) **solo** en tokens
+     *   con mayoría de dígitos, dejando intactas las palabras (nombres).
+     */
     private fun fixDigitsInNumbers(text: String): String {
-        // Reemplazos seguros solo dentro de grupos numéricos; dejamos letras intactas.
-        // Estrategia simple: donde hay secuencias con mayoría de dígitos, corregimos O→0, l/I→1, B→8, S→5.
         val tokenRegex = Regex("""\S+""")
         return tokenRegex.replace(text) { m ->
             val t = m.value
@@ -59,24 +81,32 @@ class MedicineRepository(context: Context) {
         }
     }
 
-    /* =======================
-       Dosis (regex robusto)
-       ======================= */
+    // ----------------------------------------------------------------------
+    // Extracción de dosis (regex robusto)
+    // ----------------------------------------------------------------------
 
+    /** Regex de dosis: número (con opcional decimal) + unidad (mg, g, mcg, µg). */
     private val DOSE_REGEX = Regex("""\b(\d+(?:[.,]\d+)?)\s*(mg|g|mcg|µg)\b""", RegexOption.IGNORE_CASE)
 
+    /**
+     * Extrae todas las dosis presentes en una línea de texto.
+     * Aplica el fix numérico SOLO aquí, no en los nombres.
+     */
     private fun extractDoses(line: String): List<String> {
-        // Aplicar fix de dígitos SOLO aquí (no en nombres de drogas)
         val safe = fixDigitsInNumbers(line)
         return DOSE_REGEX.findAll(safe).map { it.value.trim() }.toList()
     }
 
+    /** Exposición pública del extractor de dosis (misma implementación). */
     fun extractDosesPublic(line: String): List<String> = extractDoses(line)
 
-    /* =======================
-       Fuzzy matching liviano
-       ======================= */
+    // ----------------------------------------------------------------------
+    // Fuzzy matching liviano (Levenshtein)
+    // ----------------------------------------------------------------------
 
+    /**
+     * Distancia de edición Levenshtein O(m·n) con memoria O(n).
+     */
     private fun levenshtein(a: String, b: String): Int {
         val m = a.length; val n = b.length
         if (m == 0) return n; if (n == 0) return m
@@ -93,10 +123,16 @@ class MedicineRepository(context: Context) {
         return dp[n]
     }
 
+    /**
+     * Dada una cadena normalizada del OCR, encuentra el `Drug` más cercano:
+     * - Primero descarta stopwords y tokens cortos.
+     * - Coincidencia exacta por substring corta camino (ya cubierta por LIKE).
+     * - Umbral dinámico por longitud y verificación de "borde" (primera/última letra).
+     * - Requiere similitud relativa ≥ 0.80.
+     */
     private fun fuzzyBest(normText: String, drugs: List<Drug>): Drug? {
         var best: Pair<Drug, Int>? = null
 
-        // Tokenizar el OCR: palabras útiles (>=4 letras) y no-stopwords
         val words = normText
             .split(' ')
             .map { it.trim() }
@@ -105,10 +141,10 @@ class MedicineRepository(context: Context) {
         for (d in drugs) {
             val dn = d.normalized
 
-            // Si aparece como substring exacto ya está (pero esto ya se chequea antes)
+            // Atajo: si el texto contiene el nombre normalizado, retornar.
             if (normText.contains(dn)) return d
 
-            // Umbral por longitud (más estricto para largas)
+            // Umbral por longitud (más estricto para nombres largos).
             val allowed = when {
                 dn.length >= 12 -> 2
                 dn.length >= 9  -> 1
@@ -117,19 +153,19 @@ class MedicineRepository(context: Context) {
             }
 
             for (w in words) {
-                // Evitar comparar con palabras demasiado distintas en longitud
+                // Evitar comparar longitudes muy dispares.
                 val lenDiff = kotlin.math.abs(w.length - dn.length)
                 if (lenDiff > 2) continue
 
-                // Requerir alguna coincidencia de borde para bajar falsos positivos tipo ARGENTINA vs MANDARINA
+                // Exigir coincidencia de borde para bajar falsos positivos.
                 val sameEdge = (w.firstOrNull() == dn.firstOrNull()) || (w.lastOrNull() == dn.lastOrNull())
                 if (!sameEdge) continue
 
                 val dist = levenshtein(w, dn)
 
-                // También chequear distancia relativa
+                // Similitud relativa mínima.
                 val maxLen = maxOf(w.length, dn.length).toFloat()
-                val rel = 1f - (dist / maxLen)  // 1.0 = idéntico
+                val rel = 1f - (dist / maxLen)  // 1.0 => idéntico
                 if (dist <= allowed && rel >= 0.80f) {
                     if (best == null || dist < best!!.second) best = d to dist
                 }
@@ -138,10 +174,15 @@ class MedicineRepository(context: Context) {
         return best?.first
     }
 
-    /* =======================
-       API pública
-       ======================= */
+    // ----------------------------------------------------------------------
+    // API pública
+    // ----------------------------------------------------------------------
 
+    /**
+     * Devuelve el **mejor nombre** encontrado en un texto:
+     *  A) `LIKE` (SQL) contra nombres normalizados.
+     *  B) Si no hay match, fuzzy Levenshtein contra todo el catálogo.
+     */
     suspend fun findBestDrugName(text: String): String? = withContext(Dispatchers.IO) {
         val norm = normalizeLettersOnly(text)
 
@@ -156,7 +197,9 @@ class MedicineRepository(context: Context) {
         return@withContext fuzzy?.name
     }
 
-    // (Opcional) APIs previas
+    /**
+     * (Compat) Busca primero en el bloque completo, si no, por líneas.
+     */
     suspend fun findInBlockOrLines(blockText: String, lines: List<String>): List<FoundPair> =
         withContext(Dispatchers.IO) {
             val primary = findInText(blockText)
@@ -168,6 +211,11 @@ class MedicineRepository(context: Context) {
             emptyList()
         }
 
+    /**
+     * (Privado) Lógica de búsqueda por texto:
+     *  - LIKE (si hay, adjunta primera dosis si existe en el texto).
+     *  - Fuzzy (si no hay LIKE).
+     */
     private suspend fun findInText(text: String): List<FoundPair> {
         val norm = normalizeLettersOnly(text)
 

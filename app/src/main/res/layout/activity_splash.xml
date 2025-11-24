@@ -1,42 +1,60 @@
-<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Pantalla splash con:
+  - Fondo azul corporativo.
+  - Logotipo centrado.
+  - Créditos bajo el logo.
+  - Texto de versión arriba a la derecha.
+-->
+
+<RelativeLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#407BFF">
 
+    <!-- =========================================================
+         LOGOTIPO (centrado)
+         ========================================================= -->
     <ImageView
         android:id="@+id/logo"
         android:layout_width="400dp"
         android:layout_height="400dp"
-        android:src="@drawable/ic_medscan4"
         android:layout_centerHorizontal="true"
         android:layout_centerVertical="true"
-        android:layout_marginBottom="40dp"/> <!-- sube un poco la imagen -->
+        android:layout_marginBottom="40dp"
+        android:src="@drawable/ic_medscan4" />
 
+    <!-- =========================================================
+         CRÉDITOS (debajo del logo, centrado)
+         ========================================================= -->
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Desarrollado por Marcos Rubio,\nDaniela Araujo y Catalina Crespo"
-        android:textStyle="bold"
-        android:textColor="@android:color/white"
-        android:fontFamily="@font/fuentemedscan"
-        android:textSize="12sp"
         android:layout_below="@id/logo"
         android:layout_centerHorizontal="true"
-        android:layout_marginTop="60dp"/>
+        android:layout_marginTop="60dp"
+        android:fontFamily="@font/fuentemedscan"
+        android:text="Desarrollado por Marcos Rubio,\nDaniela Araujo y Catalina Crespo"
+        android:textColor="@android:color/white"
+        android:textSize="12sp"
+        android:textStyle="bold" />
 
+    <!-- =========================================================
+         VERSIÓN (arriba a la derecha)
+         ========================================================= -->
     <TextView
         android:id="@+id/version_text"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_alignParentTop="true"
         android:layout_alignParentEnd="true"
+        android:layout_alignParentTop="true"
         android:layout_marginEnd="8dp"
         android:layout_marginTop="10dp"
-        android:text="Versión 1.35"
-        android:textStyle="bold"
-        android:textColor="#80FFFFFF"
         android:fontFamily="@font/fuentemedscan"
-        android:textSize="12sp"/>
-
+        android:text="Versión 1.36"
+        android:textColor="#80FFFFFF"
+        android:textSize="12sp"
+        android:textStyle="bold" />
 
 </RelativeLayout>

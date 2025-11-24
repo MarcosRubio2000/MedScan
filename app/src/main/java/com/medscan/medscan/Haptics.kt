@@ -11,15 +11,28 @@ import android.view.HapticFeedbackConstants
 import android.view.View
 
 /**
+ * Haptics
+ * -------
  * Capa de vibración compatible (minSdk 24).
+ *
  * - Usa efectos "predefined" (29+) cuando se puede.
  * - Fallback a oneShot/waveform (26+), y a vibrate(ms) (24–25).
  * - Siempre intenta también performHapticFeedback como redundancia.
+ *
  */
+
 object Haptics {
+
+    // =========================================================
+    // Constantes
+    // =========================================================
     private const val TAG = "Haptics"
 
-    // ---------- Infra ----------
+    // =========================================================
+    // Infra (helpers internos)
+    // =========================================================
+
+    /** Obtiene el Vibrator compatible con la versión de Android. */
     private fun vibrator(ctx: Context): Vibrator? = try {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             (ctx.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
@@ -29,15 +42,20 @@ object Haptics {
         }
     } catch (_: Throwable) { null }
 
+    /** Verifica si el dispositivo posee vibrador. */
     private fun hasVibrator(ctx: Context): Boolean = try {
         vibrator(ctx)?.hasVibrator() == true
     } catch (_: Throwable) { false }
 
+    /** Atributos de vibración con uso táctil (API 33+). */
     private fun touchAttrs(): VibrationAttributes? =
         if (Build.VERSION.SDK_INT >= 33)
             VibrationAttributes.Builder().setUsage(VibrationAttributes.USAGE_TOUCH).build()
         else null
 
+    /**
+     * Intenta disparar el haptic del sistema sobre una vista (redundancia).
+     */
     private fun sysHaptic(view: View?, type: Int): Boolean {
         if (view == null) return false
         val flags = if (Build.VERSION.SDK_INT >= 28)
@@ -46,6 +64,12 @@ object Haptics {
         return try { view.performHapticFeedback(type, flags) } catch (_: Throwable) { false }
     }
 
+    /**
+     * Vibración compatible:
+     * - Si llega un VibrationEffect (26+), lo usa; en 33+ lo acompaña con attrs.
+     * - Si no hay effect, usa una duración (one shot) respetando la API.
+     * - En 24–25 cae a vibrate(ms).
+     */
     private fun vibrateCompat(
         ctx: Context,
         effect: VibrationEffect? = null,
@@ -95,7 +119,9 @@ object Haptics {
         }
     }
 
-    // ---------- Públicos (todas con anchor opcional) ----------
+    // =========================================================
+    // API pública (todas aceptan una View opcional para haptic del sistema)
+    // =========================================================
 
     /** Tap genérico (botones secundarios). */
     fun click(ctx: Context, anchor: View? = null) {
@@ -108,8 +134,12 @@ object Haptics {
         }
         if (!done) vibrateCompat(ctx, durationMs = 90)
 
-        // redundancia del sistema
-        sysHaptic(anchor, if (Build.VERSION.SDK_INT >= 30) HapticFeedbackConstants.KEYBOARD_PRESS else HapticFeedbackConstants.KEYBOARD_TAP)
+        // Redundancia del sistema
+        sysHaptic(
+            anchor,
+            if (Build.VERSION.SDK_INT >= 30) HapticFeedbackConstants.KEYBOARD_PRESS
+            else HapticFeedbackConstants.KEYBOARD_TAP
+        )
     }
 
     /** Vibración “Detectar”. */
@@ -122,14 +152,14 @@ object Haptics {
                     VibrationEffect.createPredefined(VibrationEffect.EFFECT_HEAVY_CLICK)
                 )
             } catch (_: Throwable) {
-                // fallback si el predefined lanza (algunos OEM)
+                // Fallback si el predefined lanza (algunos OEM)
                 vibrateCompat(ctx, durationMs = 180L)
             }
         } else {
             vibrateCompat(ctx, durationMs = 180L)
         }
 
-        // 2) Refuerzos del sistema (algunos Samsung solo sienten ciertos tipos)
+        // 2) Refuerzos del sistema
         //    Probamos dos variantes; si la primera no entra, intentamos la segunda.
         val flags = if (Build.VERSION.SDK_INT >= 28)
             HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING else 0
@@ -183,7 +213,7 @@ object Haptics {
         sysHaptic(anchor, HapticFeedbackConstants.KEYBOARD_TAP)
     }
 
-    /** Diagnóstico opcional (podés llamarlo si querés loguear). */
+    /** Diagnóstico opcional. */
     fun diagnostics(ctx: Context) {
         val v = vibrator(ctx)
         val has = hasVibrator(ctx)

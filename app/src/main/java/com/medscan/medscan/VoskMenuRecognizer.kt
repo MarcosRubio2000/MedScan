@@ -12,18 +12,38 @@ import org.vosk.Model
 import org.vosk.Recognizer
 import org.vosk.android.StorageService
 
+/**
+ * VoskMenuRecognizer
+ * ------------------
+ * Wrapper liviano para reconocimiento de voz offline con Vosk.
+ *
+ * - Carga el modelo desde assets con [prepare] (asíncrono).
+ * - Permite establecer una gramática JSON (palabras/frases esperadas) con [setGrammar],
+ *   o pasar `null` para modo libre (dictado general).
+ * - Inicia captura de micrófono y decodificación con [start], emitiendo callbacks de
+ *   "escuchando", parciales y resultado final.
+ * - Se detiene con [stop] y se libera con [destroy].
+ *
+ */
 class VoskMenuRecognizer(
     private val ctx: Context,
     private val callbacks: Callbacks
 ) {
+
+    // =========================================================
+    // Callbacks externos
+    // =========================================================
     interface Callbacks {
-        fun onReady()
-        fun onListening()
-        fun onPartial(text: String)
-        fun onResult(text: String)
-        fun onError(msg: String)
+        fun onReady()                    // Modelo listo para usarse
+        fun onListening()                // AudioRecord activo / escuchando
+        fun onPartial(text: String)      // Parcial reconocido (si lo hay)
+        fun onResult(text: String)       // Resultado final (puede ser cadena vacía)
+        fun onError(msg: String)         // Errores operativos
     }
 
+    // =========================================================
+    // Estado interno
+    // =========================================================
     private var model: Model? = null
     private var recognizer: Recognizer? = null
     private var audioRecord: AudioRecord? = null
@@ -32,16 +52,25 @@ class VoskMenuRecognizer(
 
     private var currentGrammarJson: String? = null
 
+    // Parámetros de audio / logging
     private val sampleRate = 16000
     private val TAG = "VOSK_FLEX"
 
-    /** Carga el modelo desde assets (carpeta o zip). NO crea el Recognizer. */
+    // =========================================================
+    // Setup / Modelo
+    // =========================================================
+
+    /**
+     * Carga el modelo desde assets (carpeta o zip). NO crea el Recognizer.
+     * Llama a [Callbacks.onReady] al terminar OK.
+     */
     fun prepare() {
         if (ready) { callbacks.onReady(); return }
         Log.i(TAG, "prepare(): unpack del modelo…")
 
-        // IMPORTANTE: el segundo parámetro es *el nombre en assets/*.
-        // Usá el que tengas: carpeta "vosk-model-small-es-0.42" o zip "vosk-model-small-es-0.42.zip".
+        // IMPORTANTE:
+        //  - El segundo parámetro es *el nombre en assets/*.
+        //  - Usar el que exista: carpeta "vosk-model-small-es-0.42" o zip "vosk-model-small-es-0.42.zip".
         StorageService.unpack(
             ctx.applicationContext,
             /* sourcePath */ "vosk-model-small-es-0.42",  // <-- si usás .zip, cambialo por "vosk-model-small-es-0.42.zip"
@@ -64,21 +93,25 @@ class VoskMenuRecognizer(
         )
     }
 
-    /** True cuando el modelo está listo. */
+    /** True cuando el modelo está listo para crear Recognizers y escuchar. */
     fun isReady(): Boolean = ready
 
-    /** Cambia la gramática en caliente. Pasa null para modo libre. */
+    /**
+     * Cambia la gramática en caliente.
+     * - Pasa `grammarJson` con un JSON de frases/palabras esperadas (JSONArray como String).
+     * - Pasa `null` para modo libre (sin gramática).
+     *
+     * Reinicia internamente el recognizer para aplicar la nueva gramática.
+     */
     fun setGrammar(grammarJson: String?) {
         if (!ready) {
             callbacks.onError("Modelo no listo")
             return
         }
-        // Si hay audio corriendo, lo detenemos antes de cambiar grammar
+        // Si hay audio corriendo, detener antes de cambiar gramática
         stopInternal()
 
-        try {
-            recognizer?.close()
-        } catch (_: Throwable) {}
+        try { recognizer?.close() } catch (_: Throwable) {}
         recognizer = null
 
         try {
@@ -101,6 +134,14 @@ class VoskMenuRecognizer(
         }
     }
 
+    // =========================================================
+    // Captura y reconocimiento
+    // =========================================================
+
+    /**
+     * Inicia captura de micrófono (AudioRecord) y decodificación Vosk.
+     * Requiere haber llamado antes a [setGrammar] (modo libre o con gramática).
+     */
     @SuppressLint("MissingPermission")
     fun start() {
         val rec = recognizer
@@ -132,6 +173,7 @@ class VoskMenuRecognizer(
 
         callbacks.onListening()
 
+        // Bucle de lectura/decodificación en IO
         job = CoroutineScope(Dispatchers.IO).launch {
             val buffer = ShortArray(2048)
             while (isActive) {
@@ -141,6 +183,7 @@ class VoskMenuRecognizer(
 
                 val accepted = r.acceptWaveForm(buffer, n)
                 if (accepted) {
+                    // Resultado final
                     try {
                         val txt = JSONObject(r.result).optString("text", "")
                         withContext(Dispatchers.Main) { callbacks.onResult(txt) }
@@ -148,25 +191,30 @@ class VoskMenuRecognizer(
                         withContext(Dispatchers.Main) { callbacks.onResult("") }
                     }
                 } else {
+                    // Parciales
                     try {
                         val p = JSONObject(r.partialResult).optString("partial", "")
                         if (p.isNotBlank()) {
                             withContext(Dispatchers.Main) { callbacks.onPartial(p) }
                         }
                     } catch (_: Throwable) {
-                        // ignorar JSON corrupto de parciales
+                        // Ignorar JSON corrupto de parciales
                     }
                 }
             }
         }
     }
 
+    /**
+     * Detiene la captura/decodificación actual (si la hay).
+     * El recognizer queda listo para reusar (se hace reset).
+     */
     fun stop() {
         stopInternal()
-        // después de stop(), el recognizer queda listo para reusar (no lo cerramos)
         try { recognizer?.reset() } catch (_: Throwable) {}
     }
 
+    /** Cierra audio y job internos sin tocar el recognizer. */
     private fun stopInternal() {
         job?.cancel(); job = null
         try { audioRecord?.stop() } catch (_: Throwable) {}
@@ -174,6 +222,10 @@ class VoskMenuRecognizer(
         audioRecord = null
     }
 
+    /**
+     * Libera todos los recursos (audio, recognizer y modelo).
+     * Luego de esto, debe llamarse nuevamente a [prepare] para volver a usar.
+     */
     fun destroy() {
         stopInternal()
         try { recognizer?.close() } catch (_: Throwable) {}

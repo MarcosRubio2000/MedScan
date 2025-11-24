@@ -1,19 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!--
+  Pantalla principal (detección):
+  - Fondo: Preview de cámara a pantalla completa.
+  - Barra superior: linterna (izq) + ayuda (centro) + añadir medicamento (der).
+  - Texto central con instrucciones/estado.
+  - Botón grande “Detectar” en la parte inferior.
+
+  ⚠️ Solo se ordenó y documentó. No se alteraron IDs, atributos ni comportamiento.
+-->
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     tools:context=".MainActivity">
 
-    <!-- Vista de cámara -->
+    <!-- =========================================================
+         CÁMARA (fondo): vista previa a pantalla completa
+         ========================================================= -->
     <androidx.camera.view.PreviewView
         android:id="@+id/viewFinder"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:contentDescription="Vista previa de la cámara para escanear medicamentos" />
 
-    <!-- BARRA SUPERIOR -->
+    <!-- =========================================================
+         BARRA SUPERIOR (linterna / ayuda / añadir)
+         ========================================================= -->
     <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
         android:layout_height="130dp"
@@ -25,109 +39,111 @@
             android:id="@+id/flashButton"
             android:layout_width="0dp"
             android:layout_height="0dp"
-            android:src="@drawable/ic_lantern_off"
-            android:contentDescription="Activar o desactivar linterna"
-            android:alpha="0.8"
-            android:scaleType="fitCenter"
-            android:padding="30dp"
-            app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintWidth_percent="0.32"
-            app:layout_constraintDimensionRatio="1:1"
             android:layout_marginEnd="10dp"
-            android:background="@drawable/ripple_round_button" />
+            android:alpha="0.8"
+            android:background="@drawable/ripple_round_button"
+            android:contentDescription="Activar o desactivar linterna"
+            android:padding="30dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_lantern_off"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintDimensionRatio="1:1"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintWidth_percent="0.32" />
 
         <!-- Botón de ayuda -->
         <ImageButton
             android:id="@+id/helpButton"
             android:layout_width="0dp"
             android:layout_height="0dp"
-            android:src="@drawable/ic_help"
-            android:contentDescription="Abrir menú de ayuda"
-            android:alpha="0.8"
-            android:scaleType="fitCenter"
-            android:padding="30dp"
-            app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintStart_toEndOf="@id/flashButton"
-            app:layout_constraintEnd_toStartOf="@id/addDrugButton"
-            app:layout_constraintWidth_percent="0.32"
-            app:layout_constraintDimensionRatio="1:1"
             android:layout_marginStart="10dp"
             android:layout_marginEnd="10dp"
-            android:background="@drawable/ripple_round_button" />
+            android:alpha="0.8"
+            android:background="@drawable/ripple_round_button"
+            android:contentDescription="Abrir menú de ayuda"
+            android:padding="30dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_help"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintDimensionRatio="1:1"
+            app:layout_constraintEnd_toStartOf="@id/addDrugButton"
+            app:layout_constraintStart_toEndOf="@id/flashButton"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintWidth_percent="0.32" />
 
         <!-- Botón para añadir medicamentos -->
         <ImageButton
             android:id="@+id/addDrugButton"
             android:layout_width="0dp"
             android:layout_height="0dp"
-            android:src="@drawable/ic_add_drug"
-            android:contentDescription="Añadir un nuevo medicamento a la base de datos"
-            android:alpha="0.8"
-            android:scaleType="fitCenter"
-            android:padding="30dp"
-            app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintWidth_percent="0.32"
-            app:layout_constraintDimensionRatio="1:1"
             android:layout_marginStart="10dp"
-            android:background="@drawable/ripple_round_button" />
-
+            android:alpha="0.8"
+            android:background="@drawable/ripple_round_button"
+            android:contentDescription="Añadir un nuevo medicamento a la base de datos"
+            android:padding="30dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_add_drug"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintDimensionRatio="1:1"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintWidth_percent="0.32" />
     </androidx.constraintlayout.widget.ConstraintLayout>
 
-    <!-- Texto central -->
+    <!-- =========================================================
+         TEXTO CENTRAL (instrucciones/estado)
+         ========================================================= -->
     <TextView
         android:id="@+id/textView"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="#10DDDDDD"
         android:layout_marginBottom="75dp"
+        android:background="#10DDDDDD"
+        android:contentDescription="Instrucción: Coloque la caja del medicamento frente a la cámara y presione DETECTAR"
+        android:gravity="center"
         android:padding="10dp"
         android:text="@string/texto_modo_deteccion"
-        android:textSize="20sp"
         android:textColor="#80FFFFFF"
+        android:textSize="20sp"
         android:textStyle="bold"
-        android:gravity="center"
-        android:contentDescription="Instrucción: Coloque la caja del medicamento frente a la cámara y presione DETECTAR"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintVertical_bias="0.5" />
 
-    <!-- BOTÓN DETECTAR -->
+    <!-- =========================================================
+         BOTÓN DETECTAR (contenedor con fondo redondeado)
+         ========================================================= -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:orientation="horizontal"
         android:layout_marginStart="10dp"
+        android:layout_marginTop="20dp"
         android:layout_marginEnd="10dp"
         android:layout_marginBottom="10dp"
-        android:layout_marginTop="20dp"
-        app:layout_constraintTop_toBottomOf="@id/textView"
+        android:background="@drawable/fondo_redondeado"
+        android:orientation="horizontal"
         app:layout_constraintBottom_toBottomOf="parent"
-        android:background="@drawable/fondo_redondeado">
+        app:layout_constraintTop_toBottomOf="@id/textView">
 
         <Button
             android:id="@+id/detection_button"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:text="@string/detection"
-            android:textStyle="bold"
-            android:textSize="60sp"
-            android:textColor="@android:color/white"
-            android:gravity="center"
             android:background="@drawable/button_3d"
             android:backgroundTint="@null"
-            app:backgroundTint="@null"
-            android:tint="@null"
+            android:contentDescription="Botón para iniciar detección de medicamento"
             android:elevation="8dp"
             android:foreground="?attr/selectableItemBackground"
-            android:contentDescription="Botón para iniciar detección de medicamento" />
-
+            android:gravity="center"
+            android:text="@string/detection"
+            android:textColor="@android:color/white"
+            android:textSize="60sp"
+            android:textStyle="bold"
+            android:tint="@null"
+            app:backgroundTint="@null" />
     </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
